@@ -28,10 +28,14 @@ const TABS = {
 SplashScreen.preventAutoHideAsync();
 
 const App = () => {
-  const [appIsReady, setAppIsReady] = useState(false);
+  // State to track the active tab
   const [activeTab, setActiveTab] = useState(TABS.HOME);
+  
+  // State to track whether invite flow is active
+  const [inviteFlowActive, setInviteFlowActive] = useState(false);
 
-  const [fontsLoaded, fontError] = useFonts({
+  // Load custom fonts
+  const [fontsLoaded] = useFonts({
     'Outfit': Outfit_400Regular,
     'Outfit-Regular': Outfit_400Regular,
     'Outfit-Medium': Outfit_500Medium,
@@ -39,45 +43,50 @@ const App = () => {
     'Outfit-Bold': Outfit_700Bold,
   });
 
+  // State to track app ready state
+  const [appIsReady, setAppIsReady] = useState(false);
+
+  // Initialize audio service
   useEffect(() => {
-    // Log font loading status
-    console.log('Fonts loaded:', fontsLoaded);
-    if (fontError) {
-      console.error('Font loading error:', fontError);
-    }
-    
+    // Load sound resources
+    const initAudio = async () => {
+      try {
+        await AudioService.initialize();
+        console.log('Audio service initialized');
+      } catch (error) {
+        console.error('Failed to initialize AudioService:', error);
+      }
+    };
+
+    initAudio();
+
+    // Cleanup on unmount
+    return () => {
+      AudioService.cleanup();
+      console.log('Audio service cleaned up');
+    };
+  }, []);
+
+  // Prepare other resources
+  useEffect(() => {
     async function prepare() {
       try {
         // Pre-load fonts, make any API calls you need to do here
-        await Font.loadAsync({
-          // Additional SF Pro Text font could be loaded here if needed
-        });
-        console.log('Additional fonts loaded successfully');
+        console.log('Preparing app resources...');
         
-        // Initialize the AudioService
-        try {
-          await AudioService.initialize();
-          console.log('AudioService initialized successfully during app startup');
-        } catch (error) {
-          console.error('Failed to initialize AudioService:', error);
-          // Continue app startup even if audio fails - we'll retry later
-        }
+        // Artificially delay for a smoother splash screen experience
+        await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (e) {
-        console.warn('Resource loading error:', e);
+        console.warn('Error preparing app resources:', e);
       } finally {
         // Tell the application to render
         setAppIsReady(true);
-        console.log('App is ready, appIsReady set to true');
+        console.log('App ready!');
       }
     }
 
     prepare();
-    
-    // Clean up AudioService when app unmounts
-    return () => {
-      AudioService.cleanup();
-    };
-  }, [fontsLoaded, fontError]);
+  }, []);
 
   const onLayoutRootView = useCallback(async () => {
     if (appIsReady && fontsLoaded) {
@@ -102,6 +111,11 @@ const App = () => {
     setActiveTab(tabId);
   };
 
+  // Handle invite flow state
+  const handleInviteFlowStateChange = (isActive) => {
+    setInviteFlowActive(isActive);
+  };
+
   // Render the current screen based on the active tab
   const renderScreen = () => {
     switch (activeTab) {
@@ -110,8 +124,13 @@ const App = () => {
       case TABS.DOOR:
         return <AccessScreen onNavigateToHome={() => setActiveTab(TABS.HOME)} />;
       case TABS.VISITOR:
-        // Use our new VisitorScreen with navigation callback
-        return <VisitorScreen onNavigateToHome={() => setActiveTab(TABS.HOME)} />;
+        // Use our VisitorScreen with navigation callback and invite flow state
+        return (
+          <VisitorScreen 
+            onNavigateToHome={() => setActiveTab(TABS.HOME)} 
+            onInviteFlowStateChange={handleInviteFlowStateChange}
+          />
+        );
       case TABS.MORE:
         // Not implemented yet, show home screen
         return <HomeScreen />;
@@ -134,10 +153,12 @@ const App = () => {
       />
       <View style={styles.container}>
         {renderScreen()}
-        <BottomNavigation 
-          activeTab={activeTab} 
-          onTabPress={handleTabPress} 
-        />
+        {!inviteFlowActive && (
+          <BottomNavigation 
+            activeTab={activeTab} 
+            onTabPress={handleTabPress} 
+          />
+        )}
       </View>
     </SafeAreaView>
   );

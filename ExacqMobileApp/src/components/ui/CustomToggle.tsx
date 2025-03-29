@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
   container: {
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 8, // Add padding to increase hit area
+    padding: 0, // Remove padding to eliminate hit area
   },
   track: {
     width: 48,

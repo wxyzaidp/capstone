@@ -45,9 +45,10 @@ const locationData = [
 
 interface VisitorScreenProps {
   onNavigateToHome?: () => void;
+  onInviteFlowStateChange?: (isActive: boolean) => void;
 }
 
-const VisitorScreen = ({ onNavigateToHome }: VisitorScreenProps) => {
+const VisitorScreen = ({ onNavigateToHome, onInviteFlowStateChange }: VisitorScreenProps) => {
   // State for active tab
   const [activeTab, setActiveTab] = useState<VisitorTab>(VisitorTab.INVITATION);
   
@@ -97,39 +98,32 @@ const VisitorScreen = ({ onNavigateToHome }: VisitorScreenProps) => {
   const handleAddPress = () => {
     console.log('Add visitor button pressed');
     setShowCreateInvite(true);
+    // Notify parent that invite flow is active
+    if (onInviteFlowStateChange) {
+      onInviteFlowStateChange(true);
+    }
   };
 
   // Handle closing the create invite screen
   const handleCloseCreateInvite = () => {
     setShowCreateInvite(false);
+    // Notify parent that invite flow is no longer active
+    if (onInviteFlowStateChange) {
+      onInviteFlowStateChange(false);
+    }
   };
 
-  // Handler for saving a new invite
+  // Handle invite creation
   const handleCreateInvite = (inviteData) => {
-    console.log('New invite created:', inviteData);
+    console.log('Invite created:', inviteData);
+    // You would typically save this data or call an API
     
-    // Create a new visitor object based on the invite data
-    const newVisitor: Visitor = {
-      id: `${todayVisitors.length + 1}`,
-      name: inviteData.visitorName,
-      date: new Date().toLocaleDateString('en-US', { 
-        month: '2-digit', 
-        day: '2-digit', 
-        year: '2-digit' 
-      }),
-      timeRange: inviteData.validFrom.split(', ')[2] + ' - ' + inviteData.validUntil.split(', ')[2],
-      imageUrl: 'https://randomuser.me/api/portraits/men/22.jpg', // Placeholder image
-      status: 'invited'
-    };
-    
-    // Add the new visitor to the todayVisitors array
-    const updatedVisitors = [newVisitor, ...todayVisitors];
-    
-    // Update the visitors state with the new array
-    setTodayVisitors(updatedVisitors);
-    
-    // Close the create invite screen
+    // Close the invite screen
     setShowCreateInvite(false);
+    // Notify parent that invite flow is no longer active
+    if (onInviteFlowStateChange) {
+      onInviteFlowStateChange(false);
+    }
   };
 
   // Handle navigate to home
