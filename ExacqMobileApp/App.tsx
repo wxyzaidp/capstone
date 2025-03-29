@@ -3,6 +3,7 @@ import { SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
 import { UI_COLORS } from './src/design-system/colors';
 import HomeScreen from './src/screens/HomeScreen';
 import AccessScreen from './src/screens/AccessScreen';
+import VisitorScreen from './src/screens/VisitorScreen';
 import BottomNavigation from './src/components/BottomNavigation';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Font from 'expo-font';
@@ -109,8 +110,8 @@ const App = () => {
       case TABS.DOOR:
         return <AccessScreen onNavigateToHome={() => setActiveTab(TABS.HOME)} />;
       case TABS.VISITOR:
-        // Not implemented yet, show home screen
-        return <HomeScreen />;
+        // Use our new VisitorScreen with navigation callback
+        return <VisitorScreen onNavigateToHome={() => setActiveTab(TABS.HOME)} />;
       case TABS.MORE:
         // Not implemented yet, show home screen
         return <HomeScreen />;
