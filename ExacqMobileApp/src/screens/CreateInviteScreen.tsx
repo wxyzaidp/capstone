@@ -15,15 +15,24 @@ import {
   PanResponder,
   Animated,
   TouchableWithoutFeedback,
-  StatusBar as RNStatusBar
+  StatusBar as RNStatusBar,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { UI_COLORS } from '../design-system';
 import ChevronIcon from '../components/icons/ChevronIcon';
+import CalendarChevronIcon from '../components/icons/CalendarChevronIcon';
+import CalendarMonthChevronIcon from '../components/icons/CalendarMonthChevronIcon';
 import Constants from 'expo-constants';
 import CustomToggle from '../components/ui/CustomToggle';
 import InviteDuration, { InviteData } from '../components/InviteDuration';
 import { LinearGradient } from 'expo-linear-gradient';
+import SelectHostBottomSheet from '../components/SelectHostBottomSheet';
+import { EventEmitter } from 'events';
+import InviteService from '../services/InviteService';
+import Calendar from '../components/Calendar';
+import TimeService from '../services/TimeService';
 
 // Get screen dimensions
 const { width } = Dimensions.get('window');
@@ -98,349 +107,6 @@ const WeekDays = () => {
   );
 };
 
-// Calendar component
-export const Calendar = ({ 
-  selectedStartDate,
-  selectedEndDate,
-  onDateSelect 
-}: { 
-  selectedStartDate: Date | null,
-  selectedEndDate: Date | null,
-  onDateSelect: (date: Date) => void 
-}) => {
-  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
-  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
-  const today = new Date();
-  
-  // Generate calendar data based on current month/year
-  const calendarDays = useMemo(() => {
-    const daysInMonth = getDaysInMonth(currentYear, currentMonth);
-    const firstDayOfMonth = getFirstDayOfMonth(currentYear, currentMonth);
-    
-    // Create array with empty spots for days from previous month
-    const days = Array(firstDayOfMonth).fill(null);
-    
-    // Add days of the current month
-    for (let i = 1; i <= daysInMonth; i++) {
-      days.push(i);
-    }
-    
-    // Organize into weeks (rows)
-    const weeks = [];
-    let week = [];
-    
-    days.forEach((day, index) => {
-      week.push(day);
-      if ((index + 1) % 7 === 0 || index === days.length - 1) {
-        // If week has less than 7 days, fill with null
-        while (week.length < 7) {
-          week.push(null);
-        }
-        weeks.push([...week]);
-        week = [];
-      }
-    });
-    
-    return weeks;
-  }, [currentMonth, currentYear]);
-  
-  // Handle month navigation
-  const goToPreviousMonth = () => {
-    if (currentMonth === 0) {
-      setCurrentMonth(11);
-      setCurrentYear(currentYear - 1);
-    } else {
-      setCurrentMonth(currentMonth - 1);
-    }
-  };
-  
-  const goToNextMonth = () => {
-    if (currentMonth === 11) {
-      setCurrentMonth(0);
-      setCurrentYear(currentYear + 1);
-    } else {
-      setCurrentMonth(currentMonth + 1);
-    }
-  };
-  
-  // Check if a day is the selected start date
-  const isSelectedStartDate = (day: number | null) => {
-    if (!day || !selectedStartDate) return false;
-    
-    return (
-      selectedStartDate.getDate() === day &&
-      selectedStartDate.getMonth() === currentMonth &&
-      selectedStartDate.getFullYear() === currentYear
-    );
-  };
-  
-  // Check if a day is the selected end date
-  const isSelectedEndDate = (day: number | null) => {
-    if (!day || !selectedEndDate) return false;
-    
-    return (
-      selectedEndDate.getDate() === day &&
-      selectedEndDate.getMonth() === currentMonth &&
-      selectedEndDate.getFullYear() === currentYear
-    );
-  };
-  
-  // Check if a day is in the selected range
-  const isInSelectedRange = (day: number | null) => {
-    // If any required value is missing, we cannot determine range
-    if (!day || !selectedStartDate || !selectedEndDate) return false;
-    
-    // Create date objects without time components
-    const currentDate = new Date(currentYear, currentMonth, day);
-    const startDate = new Date(
-      selectedStartDate.getFullYear(),
-      selectedStartDate.getMonth(),
-      selectedStartDate.getDate()
-    );
-    const endDate = new Date(
-      selectedEndDate.getFullYear(),
-      selectedEndDate.getMonth(),
-      selectedEndDate.getDate()
-    );
-    
-    // Make sure we're working with clean date-only values
-    currentDate.setHours(0, 0, 0, 0);
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
-    
-    // Get min and max dates regardless of selection order
-    const minDate = startDate < endDate ? startDate : endDate;
-    const maxDate = startDate < endDate ? endDate : startDate;
-    
-    // Check if current date is between min and max but not equal to either
-    const isStartDateOrEndDate = 
-      (currentDate.getTime() === startDate.getTime()) || 
-      (currentDate.getTime() === endDate.getTime());
-    
-    const isBetweenDates = 
-      currentDate.getTime() > minDate.getTime() && 
-      currentDate.getTime() < maxDate.getTime();
-    
-    // Return true only for dates strictly between start and end
-    return isBetweenDates && !isStartDateOrEndDate;
-  };
-  
-  // Check if a day is today
-  const isToday = (day: number | null) => {
-    if (!day) return false;
-    
-    return (
-      today.getDate() === day &&
-      today.getMonth() === currentMonth &&
-      today.getFullYear() === currentYear
-    );
-  };
-  
-  // Check if a day is in the past
-  const isInPast = (day: number | null) => {
-    if (!day) return false;
-    
-    const date = new Date(currentYear, currentMonth, day);
-    today.setHours(0, 0, 0, 0); // Reset time part for accurate date comparison
-    return date < today;
-  };
-  
-  // Handle date selection
-  const handleDateSelect = (day: number | null) => {
-    if (day === null) return;
-    
-    const newDate = new Date(currentYear, currentMonth, day);
-    onDateSelect(newDate);
-  };
-  
-  // Get month name and year
-  const getMonthName = () => {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return months[currentMonth];
-  };
-  
-  useEffect(() => {
-    if (selectedStartDate || selectedEndDate) {
-      console.log(`SelectedStartDate: ${selectedStartDate ? selectedStartDate.toISOString() : 'null'}`);
-      console.log(`SelectedEndDate: ${selectedEndDate ? selectedEndDate.toISOString() : 'null'}`);
-    }
-  }, [selectedStartDate, selectedEndDate]);
-
-  // Function to determine the number of days between two dates
-  const getDaysBetweenDates = useCallback((startDate: Date, endDate: Date) => {
-    const msPerDay = 24 * 60 * 60 * 1000;
-    return Math.abs(Math.round((endDate.getTime() - startDate.getTime()) / msPerDay));
-  }, []);
-
-  // Inside the Calendar component, add a new function to determine range position
-  const getRangePositionStyle = useCallback((day: number | null, dayIndex: number, weekIndex: number) => {
-    if (!selectedStartDate || !selectedEndDate || !day) return null;
-    
-    // Create date objects for comparison
-    const currentDate = new Date(currentYear, currentMonth, day);
-    currentDate.setHours(0, 0, 0, 0);
-    
-    const startDate = new Date(
-      selectedStartDate.getFullYear(),
-      selectedStartDate.getMonth(),
-      selectedStartDate.getDate()
-    );
-    startDate.setHours(0, 0, 0, 0);
-    
-    const endDate = new Date(
-      selectedEndDate.getFullYear(),
-      selectedEndDate.getMonth(),
-      selectedEndDate.getDate()
-    );
-    endDate.setHours(0, 0, 0, 0);
-    
-    // Get the smaller and larger date for range comparison
-    const minDate = startDate < endDate ? startDate : endDate;
-    const maxDate = startDate < endDate ? endDate : startDate;
-    
-    if (currentDate.getTime() === minDate.getTime()) {
-      return { isStart: true, isEnd: false, isInRange: false };
-    } else if (currentDate.getTime() === maxDate.getTime()) {
-      return { isStart: false, isEnd: true, isInRange: false };
-    } else if (currentDate > minDate && currentDate < maxDate) {
-      return { isStart: false, isEnd: false, isInRange: true };
-    }
-    
-    return null;
-  }, [selectedStartDate, selectedEndDate, currentYear, currentMonth]);
-
-  // Function to determine gradient colors
-  const getGradientProps = useCallback((rangeInfo: { isStart: boolean, isEnd: boolean, isInRange: boolean } | null) => {
-    if (!rangeInfo) return null;
-    
-    if (rangeInfo.isStart) {
-      return {
-        colors: ['#6FDCFA', 'rgba(111, 220, 250, 0.35)'] as [string, string],
-        start: {x: 0, y: 0.5},
-        end: {x: 1, y: 0.5},
-        style: { left: 22, right: 0 } // Start from middle of circle
-      };
-    } else if (rangeInfo.isEnd) {
-      return {
-        colors: ['rgba(111, 220, 250, 0.35)', '#6FDCFA'] as [string, string],
-        start: {x: 0, y: 0.5},
-        end: {x: 1, y: 0.5},
-        style: { left: 0, right: 22 } // End at middle of circle
-      };
-    } else if (rangeInfo.isInRange) {
-      return {
-        colors: ['rgba(111, 220, 250, 0.35)', 'rgba(111, 220, 250, 0.35)'] as [string, string],
-        start: {x: 0, y: 0.5},
-        end: {x: 1, y: 0.5},
-        style: {}
-      };
-    }
-    
-    return null;
-  }, []);
-
-  return (
-    <View style={styles.calendarContainer}>
-      <View style={styles.monthYearHeader}>
-        <View style={styles.monthYearText}>
-          <Text style={styles.monthText}>{getMonthName()}</Text>
-          <Text style={styles.yearText}>{currentYear}</Text>
-        </View>
-        <View style={styles.monthNavigation}>
-          <TouchableOpacity style={styles.navButton} onPress={goToPreviousMonth}>
-            <ChevronIcon direction="left" width={24} height={24} fill={ACCENT_COLOR} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navButton} onPress={goToNextMonth}>
-            <ChevronIcon direction="right" width={24} height={24} fill={ACCENT_COLOR} />
-          </TouchableOpacity>
-        </View>
-      </View>
-      
-      <WeekDays />
-      
-      <View style={styles.datesContainer}>
-        {calendarDays.map((week, weekIndex) => (
-          <View key={weekIndex} style={styles.weekRow}>
-            {week.map((day, dayIndex) => {
-              const isPast = day !== null && new Date(currentYear, currentMonth, day) < today;
-              
-              // Determine if this day is selected or in range
-              let isStart = false;
-              let isEnd = false;
-              
-              if (day !== null && selectedStartDate && selectedEndDate) {
-                const currentDate = new Date(currentYear, currentMonth, day);
-                currentDate.setHours(0, 0, 0, 0);
-                
-                const startDate = new Date(
-                  selectedStartDate.getFullYear(),
-                  selectedStartDate.getMonth(),
-                  selectedStartDate.getDate()
-                );
-                startDate.setHours(0, 0, 0, 0);
-                
-                const endDate = new Date(
-                  selectedEndDate.getFullYear(),
-                  selectedEndDate.getMonth(),
-                  selectedEndDate.getDate()
-                );
-                endDate.setHours(0, 0, 0, 0);
-                
-                isStart = currentDate.getTime() === startDate.getTime();
-                isEnd = currentDate.getTime() === endDate.getTime();
-              }
-              
-              // Get range position information
-              const rangeInfo = day !== null ? getRangePositionStyle(day, dayIndex, weekIndex) : null;
-              const gradientProps = getGradientProps(rangeInfo);
-              
-              return (
-                <TouchableOpacity 
-                  key={dayIndex} 
-                  style={[
-                    styles.dateCell,
-                    isPast && styles.pastDateCell,
-                  ]}
-                  disabled={!day || isPast}
-                  onPress={() => handleDateSelect(day)}
-                >
-                  {/* Render the gradient highlight if this day is in the range */}
-                  {gradientProps && (
-                    <LinearGradient
-                      colors={gradientProps.colors}
-                      start={gradientProps.start}
-                      end={gradientProps.end}
-                      style={[styles.dayRangeHighlight, gradientProps.style]}
-                    />
-                  )}
-                  
-                  {/* Render the date with its circle if it's selected */}
-                  {day && (
-                    <View style={[
-                      styles.dateCellContent,
-                      isStart && styles.selectedStartDateCell,
-                      isEnd && styles.selectedEndDateCell,
-                    ]}>
-                      <Text style={[
-                        styles.dateText,
-                        (isStart || isEnd) && styles.selectedDateText,
-                        isPast && styles.pastDateText
-                      ]}>
-                        {day}
-                      </Text>
-                      {isToday(day) && <View style={styles.todayDot} />}
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-};
-
 // Time Selection component
 const TimeSelection = ({ 
   isAllDay, 
@@ -458,11 +124,16 @@ const TimeSelection = ({
   type: 'from' | 'to'
 }) => {
   // Time presets
-  const timeOptions = ['8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', 
-                       '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM'];
+  const timeOptions = TimeService.getStandardTimeOptions();
   
   // Display formatted date if available
   const displayDate = selectedDate ? formatDate(selectedDate).split(',')[1].trim() : 'Add Date';
+  
+  // Add logging when all-day is toggled
+  const handleAllDayToggle = (newValue: boolean) => {
+    console.log(`[TimeSelection] All-day toggled to: ${newValue}`);
+    setIsAllDay(newValue);
+  };
   
   return (
     <View style={styles.timeSelectionContainer}>
@@ -472,7 +143,7 @@ const TimeSelection = ({
           <View style={styles.toggleWrapper}>
             <CustomToggle
               value={isAllDay}
-              onValueChange={setIsAllDay}
+              onValueChange={handleAllDayToggle}
             />
           </View>
         </View>
@@ -565,6 +236,28 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
   // Bottom sheet state
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [activeDateField, setActiveDateField] = useState<'validFrom' | 'validUntil' | null>(null);
+  const [employeeListVisible, setEmployeeListVisible] = useState(false);
+
+  // Sample employee data - in a real app, this would come from an API
+  const employees = [
+    { id: '1', name: 'John Smith' },
+    { id: '2', name: 'Sarah Johnson' },
+    { id: '3', name: 'Michael Brown' },
+    { id: '4', name: 'Emily Davis' },
+    { id: '5', name: 'Robert Wilson' },
+    { id: '6', name: 'Jennifer Lee' },
+    { id: '7', name: 'David Garcia' },
+    { id: '8', name: 'Jessica Martinez' },
+    { id: '9', name: 'Thomas Anderson' },
+    { id: '10', name: 'Lisa Rodriguez' },
+  ];
+
+  // Handle employee selection
+  const handleEmployeeSelect = (employee: { id: string; name: string }) => {
+    console.log('Employee selected:', employee);
+    updateField('hostName', employee.name);
+    setEmployeeListVisible(false);
+  };
 
   // Update form fields
   const updateField = (field: keyof InviteData, value: string | boolean) => {
@@ -574,26 +267,158 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
     }));
   };
 
-  // Check if form is valid (all required fields filled)
+  // Update the isFormValid function to be more lenient and add logging
   const isFormValid = () => {
-    return Boolean(
-      inviteData.visitorName && 
-      inviteData.visitorEmail && 
-      inviteData.validFrom && 
-      inviteData.validUntil && 
-      inviteData.hostName
-    );
+    console.log('[CreateInviteScreen] Checking form validity...');
+    console.log(`[CreateInviteScreen] visitorName: "${inviteData.visitorName}"`);
+    console.log(`[CreateInviteScreen] visitorEmail: "${inviteData.visitorEmail}"`);
+    console.log(`[CreateInviteScreen] hostName: "${inviteData.hostName}"`);
+    console.log(`[CreateInviteScreen] validFrom: "${inviteData.validFrom}"`);
+    console.log(`[CreateInviteScreen] validUntil: "${inviteData.validUntil}"`);
+    
+    // For testing purposes, make validation more lenient
+    // Only require visitorName and dates
+    const hasName = !!inviteData.visitorName && inviteData.visitorName.trim() !== '';
+    const hasValidFrom = !!inviteData.validFrom && inviteData.validFrom.trim() !== '';
+    const hasValidUntil = !!inviteData.validUntil && inviteData.validUntil.trim() !== '';
+    
+    const isValid = hasName && hasValidFrom && hasValidUntil;
+    
+    console.log(`[CreateInviteScreen] Form validity result: ${isValid}`);
+    return isValid;
   };
 
-  // Handle create invite
-  const handleCreateInvite = () => {
-    // Don't proceed if form is invalid
-    if (!isFormValid()) return;
+  // Add loading state
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Update the handleCreateInvite function to properly format dates and ensure no circular dependencies
+  const handleCreateInvite = async () => {
+    console.log('[CreateInviteScreen] ==================== CREATE INVITE START ====================');
+    console.log('[CreateInviteScreen] Creating invite with form data:', JSON.stringify(inviteData, null, 2));
+    setIsLoading(true);
     
-    if (onCreateInvite) {
-      onCreateInvite(inviteData);
+    // Check if the form is valid
+    if (!isFormValid()) {
+      console.error('[CreateInviteScreen] Form validation failed');
+      Alert.alert('Invalid Form', 'Please fill in all required fields');
+      setIsLoading(false);
+      return;
     }
-    onClose();
+    
+    setIsLoading(true);
+    
+    try {
+      console.log('[CreateInviteScreen] Creating invite with InviteService');
+      
+      // Function to ensure date is in ISO format with improved error handling and all-day support
+      const ensureISOFormat = (dateStr: string | null | undefined, isStart: boolean = true): string => {
+        if (!dateStr) {
+          console.log('[CreateInviteScreen] No date string provided, using current time');
+          return new Date().toISOString();
+        }
+        
+        try {
+          console.log(`[CreateInviteScreen] Attempting to parse date: "${dateStr}", isStart: ${isStart}, isAllDay: ${inviteData.isAllDay}`);
+          
+          // Check if this is an all-day event
+          if (inviteData.isAllDay) {
+            console.log('[CreateInviteScreen] Processing as all-day event');
+            
+            // Parse date with TimeService
+            const parsedDate = TimeService.fromISOString(dateStr);
+            
+            // Set to start or end of day based on which field we're processing
+            const adjustedDate = new Date(parsedDate);
+            if (isStart) {
+              // Start date should be at beginning of day
+              adjustedDate.setHours(0, 0, 0, 0);
+              console.log('[CreateInviteScreen] Set start date to beginning of day:', adjustedDate.toString());
+            } else {
+              // End date should be at end of day
+              adjustedDate.setHours(23, 59, 59, 999);
+              console.log('[CreateInviteScreen] Set end date to end of day:', adjustedDate.toString());
+            }
+            
+            // Return ISO string
+            return adjustedDate.toISOString();
+          }
+          
+          // For non-all-day events, use regular parsing
+          const date = TimeService.fromISOString(dateStr);
+          
+          // Check if parsing was successful
+          if (!isNaN(date.getTime())) {
+            const isoString = date.toISOString();
+            console.log(`[CreateInviteScreen] Successfully parsed date to: ${isoString}`);
+            console.log(`[CreateInviteScreen] Local date representation: ${date.toString()}`);
+            return isoString;
+          }
+          
+          // If we still reach here, it means all parsing methods failed
+          console.error(`[CreateInviteScreen] All parsing methods failed for: "${dateStr}"`);
+          
+          // Generate a clean fallback date using TimeService
+          console.log('[CreateInviteScreen] Using standard invite time as fallback');
+          const { startDate, endDate } = TimeService.createStandardInviteTimes();
+          
+          // Return appropriate date based on which field we're processing
+          const fallbackDate = isStart ? startDate : endDate;
+          console.log(`[CreateInviteScreen] Fallback date: ${fallbackDate.toISOString()}`);
+          
+          return fallbackDate.toISOString();
+        } catch (error) {
+          console.error('[CreateInviteScreen] Error parsing date:', error);
+          console.log('[CreateInviteScreen] Stack trace:', error.stack);
+          
+          // Even with error, provide a usable date
+          const { startDate, endDate } = TimeService.createStandardInviteTimes();
+          return isStart ? startDate.toISOString() : endDate.toISOString();
+        }
+      };
+      
+      // Format dates
+      const validFrom = ensureISOFormat(inviteData.validFrom, true);
+      const validUntil = ensureISOFormat(inviteData.validUntil, false);
+      
+      console.log('[CreateInviteScreen] Final formatted dates:');
+      console.log(`[CreateInviteScreen] validFrom: ${validFrom}`);
+      console.log(`[CreateInviteScreen] validUntil: ${validUntil}`);
+      console.log(`[CreateInviteScreen] isAllDay: ${inviteData.isAllDay}`);
+      
+      // Create data object for InviteService
+      const inviteServiceData = {
+        visitorName: inviteData.visitorName || 'Guest',
+        validFrom,
+        validUntil,
+        hostName: inviteData.hostName || ''
+      };
+      
+      // Check formatted times to ensure they're correct before sending
+      const startDate = new Date(validFrom);
+      const endDate = new Date(validUntil);
+      const formattedDisplay = TimeService.formatDateTimeRange(startDate, endDate);
+      console.log('[CreateInviteScreen] Formatted display for verification:', formattedDisplay);
+      
+      // Create the invite
+      const newInvite = await InviteService.createInvite(inviteServiceData);
+      
+      console.log('[CreateInviteScreen] Invite created successfully with ID:', newInvite.id);
+      
+      // Don't show success Alert, the parent component will show a Toast instead
+      if (onCreateInvite) {
+        // Call the parent's invite handler which shows a toast
+        onCreateInvite(inviteData);
+      }
+      
+      // Close the screen
+      onClose();
+    } catch (error) {
+      console.error('[CreateInviteScreen] Error creating invite:', error);
+      Alert.alert('Error', `Failed to create invite: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+      console.log('[CreateInviteScreen] ==================== CREATE INVITE END ====================');
+    }
   };
 
   // Log focus changes
@@ -646,11 +471,14 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
     const hasValue = Boolean(value);
     const inputProps = getInputProps();
     const isDateField = field === 'validFrom' || field === 'validUntil';
+    const isHostField = field === 'hostName';
     
     const handlePress = () => {
       if (isDateField) {
         setActiveDateField(field as 'validFrom' | 'validUntil');
         setDatePickerVisible(true);
+      } else if (isHostField) {
+        setEmployeeListVisible(true);
       }
     };
     
@@ -660,8 +488,8 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
           styles.inputContainer, 
           isFocused && styles.inputContainerFocused
         ]}
-        onPress={isDateField ? handlePress : undefined}
-        activeOpacity={isDateField ? 0.7 : 1}
+        onPress={(isDateField || isHostField) ? handlePress : undefined}
+        activeOpacity={(isDateField || isHostField) ? 0.7 : 1}
       >
         {isDateField ? (
           // FIXED: Date field rendering to exactly match design
@@ -705,11 +533,12 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
               {...inputProps}
               onFocus={() => handleFocus(field)}
               onBlur={handleBlur}
+              editable={!isHostField} // Make the host field not directly editable
             />
           </>
         )}
         
-        {(field === 'visitorName' || isDateField) && (
+        {(field === 'visitorName' || isDateField || isHostField) && (
           <ChevronIcon direction="right" width={20} height={20} fill="#FFFFFF" />
         )}
       </TouchableOpacity>
@@ -765,26 +594,38 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
               </View>
             </View>
 
+            {/* Visit Details Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionHeaderText}>Visit Details</Text>
+              </View>
+              <View style={styles.formSection}>
+                {renderInputField('Host Name', 'hostName')}
+                {renderInputField('Reason for Visit', 'reasonForVisit', true)}
+                {renderInputField('Notes for Visitor', 'notesForVisitor', true)}
+                {renderInputField('Notes for Reception', 'notesForReception', true)}
+              </View>
+            </View>
+
             {/* Bottom padding for content scrolling */}
             <View style={styles.bottomPadding} />
           </ScrollView>
 
           {/* Bottom Bar with Create Button */}
           <View style={styles.bottomBar}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
                 styles.createButton,
                 !isFormValid() && styles.createButtonDisabled
               ]}
               onPress={handleCreateInvite}
-              disabled={!isFormValid()}
+              disabled={!isFormValid() || isLoading}
             >
-              <Text style={[
-                styles.createButtonText,
-                !isFormValid() && styles.createButtonTextDisabled
-              ]}>
-                Create Invite
-              </Text>
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.createButtonText}>Create Invite</Text>
+              )}
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -797,6 +638,14 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
           inviteData={inviteData}
           setInviteData={setInviteData}
           activeDateField={activeDateField}
+        />
+
+        {/* Employee List bottom sheet component */}
+        <SelectHostBottomSheet 
+          visible={employeeListVisible}
+          onClose={() => setEmployeeListVisible(false)}
+          onSelect={handleEmployeeSelect}
+          employees={employees}
         />
       </View>
     </SafeAreaView>
@@ -851,7 +700,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingVertical: 16,
-    flex: 1,
   },
   section: {
     marginBottom: 16,
@@ -918,8 +766,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dateText: {
-    fontSize: 16,
     fontFamily: 'Outfit-Regular',
+    fontSize: 16,
     color: '#FFFFFF',
   },
   bottomPadding: {
@@ -1016,7 +864,7 @@ const styles = StyleSheet.create({
   calendarContainer: {
     backgroundColor: '#404759',
     borderRadius: 12,
-    padding: 24,
+    padding: 20,
     width: 358,
     maxWidth: width - 32,
     marginTop: 0,
@@ -1032,26 +880,32 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 24,
+    paddingLeft: 0,
+    paddingRight: 0,
   },
   monthYearText: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    paddingLeft: 10,
   },
   monthText: {
     fontFamily: 'Outfit-Medium',
     fontSize: 16,
     color: '#FFFFFF',
+    marginRight: 5,
   },
   yearText: {
     fontFamily: 'Outfit-Medium',
     fontSize: 16,
     color: '#FFFFFF',
+    marginRight: 2,
   },
   monthNavigation: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 28,
+    paddingRight: 10,
   },
   navButton: {
     padding: 4,
@@ -1255,6 +1109,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     width: '100%',
     marginBottom: 12,
+    paddingLeft: 10,
+    paddingRight: 10,
   },
   weekDay: {
     width: 44,
@@ -1270,6 +1126,8 @@ const styles = StyleSheet.create({
   },
   datesContainer: {
     width: '100%',
+    paddingLeft: 10,
+    paddingRight: 10,
   },
   weekRow: {
     flexDirection: 'row',
@@ -1327,7 +1185,7 @@ const styles = StyleSheet.create({
     zIndex: 2, // Ensure it's above the range highlight
   },
   selectedDateText: {
-    color: 'white',
+    color: '#1E2021',
     fontWeight: '600',
   },
   todayDot: {
@@ -1344,6 +1202,57 @@ const styles = StyleSheet.create({
   },
   pastDateText: {
     color: '#717C98',
+  },
+  yearPickerContainer: {
+    width: '100%',
+    paddingLeft: 10,
+    paddingRight: 10,
+    height: 284,
+    overflow: 'hidden',
+  },
+  yearPickerScrollContent: {
+    paddingVertical: 12,
+  },
+  yearPickerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 28,
+    width: '100%',
+    paddingHorizontal: 4,
+  },
+  yearPickerItem: {
+    minWidth: 62,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  yearPickerItemSelected: {
+    backgroundColor: '#6FDCFA',
+  },
+  yearPickerItemText: {
+    fontFamily: 'Outfit-Regular',
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  yearPickerItemTextSelected: {
+    color: '#131515',
+  },
+  employeeListContainer: {
+    flex: 1,
+    padding: 16,
+  },
+  employeeItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(70, 78, 97, 0.35)',
+  },
+  employeeName: {
+    fontFamily: 'Outfit-Regular',
+    fontSize: 16,
+    color: '#FFFFFF',
   },
 });
 

@@ -323,7 +323,11 @@ const DoorBottomSheet: React.FC<DoorBottomSheetProps> = ({
           // If door is locked but we think it's unlocked, reset our state
           setIsUnlocked(false);
           setCountdown(UNLOCK_DURATION);
-          resetSwipeButton();
+          
+          // Reset all animation values to their initial states
+          swipePosition.setValue(0);
+          textOpacity.setValue(1);
+          successWidth.setValue(0);
         }
       }, 100); // Update much more frequently for smoother progress bar animation
     }
@@ -383,7 +387,12 @@ const DoorBottomSheet: React.FC<DoorBottomSheetProps> = ({
       // Only reset visually if the door is truly locked
       if (!doorId || !DoorTimerService.isDoorUnlocked(doorId)) {
         console.log(`[DoorBottomSheet] Door ${doorId} is locked or unknown, resetting swipe button on sheet close`);
-        resetSwipeButton();
+        // Reset all animation values to their initial states
+        swipePosition.setValue(0);
+        textOpacity.setValue(1);
+        successWidth.setValue(0);
+        setIsUnlocked(false);
+        setCountdown(UNLOCK_DURATION);
       } else {
         console.log(`[DoorBottomSheet] Door ${doorId} is still unlocked, skipping reset on sheet close`);
       }
@@ -564,7 +573,11 @@ const DoorBottomSheet: React.FC<DoorBottomSheetProps> = ({
     
     setIsUnlocked(false);
     setCountdown(UNLOCK_DURATION);
-    resetSwipeButton();
+    
+    // Reset all animation values to their initial states
+    swipePosition.setValue(0);
+    textOpacity.setValue(1);
+    successWidth.setValue(0);
   };
 
   // Swipe to unlock functionality with proper updates to the green progress bar
@@ -603,7 +616,12 @@ const DoorBottomSheet: React.FC<DoorBottomSheetProps> = ({
         if (gestureState.dx >= SWIPE_UNLOCK_THRESHOLD) {
           handleSuccessfulUnlock();
         } else {
-          resetSwipeButton();
+          // Reset all animation values to their initial states
+          swipePosition.setValue(0);
+          textOpacity.setValue(1);
+          successWidth.setValue(0);
+          setIsUnlocked(false);
+          setCountdown(UNLOCK_DURATION);
         }
       },
       onPanResponderTerminate: () => {
@@ -611,7 +629,12 @@ const DoorBottomSheet: React.FC<DoorBottomSheetProps> = ({
         setIsDragging(false);
         
         if (!isUnlocked) {
-          resetSwipeButton();
+          // Reset all animation values to their initial states
+          swipePosition.setValue(0);
+          textOpacity.setValue(1);
+          successWidth.setValue(0);
+          setIsUnlocked(false);
+          setCountdown(UNLOCK_DURATION);
         }
       }
     });
@@ -653,7 +676,12 @@ const DoorBottomSheet: React.FC<DoorBottomSheetProps> = ({
         if (gestureState.dx >= SWIPE_UNLOCK_THRESHOLD) {
           handleSuccessfulUnlock();
         } else {
-          resetSwipeButton();
+          // Reset all animation values to their initial states
+          swipePosition.setValue(0);
+          textOpacity.setValue(1);
+          successWidth.setValue(0);
+          setIsUnlocked(false);
+          setCountdown(UNLOCK_DURATION);
         }
       },
       onPanResponderTerminate: () => {
@@ -661,7 +689,12 @@ const DoorBottomSheet: React.FC<DoorBottomSheetProps> = ({
         setIsDragging(false);
         
         if (!isUnlocked) {
-          resetSwipeButton();
+          // Reset all animation values to their initial states
+          swipePosition.setValue(0);
+          textOpacity.setValue(1);
+          successWidth.setValue(0);
+          setIsUnlocked(false);
+          setCountdown(UNLOCK_DURATION);
         }
       }
     });

@@ -14,7 +14,10 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import CustomToggle from './ui/CustomToggle';
-import { Calendar } from '../screens/CreateInviteScreen'; // Import the Calendar component
+import Calendar from './Calendar'; // Import Calendar from its dedicated file
+import DateTimePicker from '@react-native-community/datetimepicker';
+import DateService, { isValidDate, parseInviteDate, formatShortDate, formatLongDate, formatInviteDate } from '../services/DateService';
+import TimeService from '../services/TimeService';
 
 // Define types
 export interface InviteData {
@@ -39,19 +42,6 @@ interface InviteDurationProps {
   activeDateField: 'validFrom' | 'validUntil' | null;
 }
 
-// Utility function for date formatting
-const formatDate = (date: Date) => {
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  
-  const dayName = days[date.getDay()];
-  const monthName = months[date.getMonth()];
-  const dayNumber = date.getDate();
-  const year = date.getFullYear();
-  
-  return `${dayName}, ${monthName} ${dayNumber}, ${year}`;
-};
-
 // InviteDuration component
 const InviteDuration: React.FC<InviteDurationProps> = ({ 
   visible, 
@@ -67,8 +57,8 @@ const InviteDuration: React.FC<InviteDurationProps> = ({
   // State for date/time selection
   const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(null);
   const [selectedEndDate, setSelectedEndDate] = useState<Date | null>(null);
-  const [fromTime, setFromTime] = useState('10:00 AM');
-  const [toTime, setToTime] = useState('11:00 AM');
+  const [fromTime, setFromTime] = useState<string | null>(null);
+  const [toTime, setToTime] = useState<string | null>(null);
   const [isAllDay, setIsAllDay] = useState(inviteData.isAllDay);
   
   // Animation values for bottomsheet
@@ -82,13 +72,26 @@ const InviteDuration: React.FC<InviteDurationProps> = ({
   const [isDraggingHeader, setIsDraggingHeader] = useState(false);
   
   // Title for the bottom sheet
-  const sheetTitle = activeDateField === 'validFrom' 
-    ? 'Invite Duration' 
-    : 'Custom Timeframe';
+  const getSheetTitle = () => {
+    return activeDateField === 'validFrom' 
+      ? 'Invite Duration' 
+      : 'Custom Timeframe';
+  };
 
+  // Add missing state variables for time picker visibility
+  const [isTimePickerVisible, setIsTimePickerVisible] = useState(false);
+  const [activeTimeField, setActiveTimeField] = useState<'from' | 'to' | null>(null);
+
+  // Add state to track active date chip
+  const [activeDateChip, setActiveDateChip] = useState<'from' | 'to' | null>(null);
+  
   // Initialize values when the bottom sheet opens
   useEffect(() => {
     if (visible) {
+      console.log("========== INITIALIZING INVITE DURATION ==========");
+      console.log("ActiveDateField:", activeDateField);
+      console.log("InviteData:", JSON.stringify(inviteData, null, 2));
+      
       // Reset the pan position
       pan.setValue(0);
       
@@ -113,14 +116,99 @@ const InviteDuration: React.FC<InviteDurationProps> = ({
         }),
       ]).start();
       
-      // Initialize with empty states - no dates selected by default
-      // This matches the Figma design where the calendar shows no selected dates,
-      // but displays today's date with a dot underneath it
+      // Initialize with empty states first to avoid stale data
       setSelectedStartDate(null);
       setSelectedEndDate(null);
-      setFromTime('10:00 AM');
-      setToTime('11:00 AM');
+      setFromTime(null);
+      setToTime(null);
       setIsAllDay(inviteData.isAllDay);
+      
+      // Use setTimeout to ensure the state reset above has completed
+      setTimeout(() => {
+        // Parse existing date and time values from inviteData if available
+        if (inviteData) {
+          console.log('INPUT: Raw inviteData:', JSON.stringify(inviteData, null, 2));
+          
+          // For storing the parsed dates for later reference
+          let parsedStartDate: Date | null = null;
+          
+          // Parse the from date/time using our service
+          console.log('PARSING FROM: Starting validFrom parsing');
+          if (inviteData.validFrom && inviteData.validFrom.trim() !== '') {
+            const { date: fromDate, time: fromTimeValue } = parseInviteDate(inviteData.validFrom);
+            
+            if (fromDate) {
+              console.log('PARSING FROM: Setting start date:', fromDate.toISOString());
+              setSelectedStartDate(fromDate);
+              parsedStartDate = fromDate; // Store for later reference
+            } else {
+              console.log('PARSING FROM: No valid date, setting to today');
+              const today = new Date();
+              setSelectedStartDate(today);
+              parsedStartDate = today; // Store for later reference
+            }
+            
+            if (fromTimeValue) {
+              console.log('PARSING FROM: Setting from time:', fromTimeValue);
+              setFromTime(fromTimeValue);
+            }
+          } else {
+            console.log('PARSING FROM: No validFrom in inviteData, setting to today');
+            const today = new Date();
+            setSelectedStartDate(today);
+            parsedStartDate = today; // Store for later reference
+          }
+          
+          // Parse the until date/time using our service
+          console.log('PARSING UNTIL: Starting validUntil parsing');
+          if (inviteData.validUntil && inviteData.validUntil.trim() !== '') {
+            const { date: untilDate, time: untilTimeValue } = parseInviteDate(inviteData.validUntil);
+            
+            if (untilDate) {
+              console.log('PARSING UNTIL: Setting end date:', untilDate.toISOString());
+              setSelectedEndDate(untilDate);
+            } else if (parsedStartDate) {
+              console.log('PARSING UNTIL: No valid date, using start date');
+              setSelectedEndDate(parsedStartDate);
+            } else {
+              console.log('PARSING UNTIL: No valid date and no start date, setting to today');
+              setSelectedEndDate(new Date());
+            }
+            
+            if (untilTimeValue) {
+              console.log('PARSING UNTIL: Setting to time:', untilTimeValue);
+              setToTime(untilTimeValue);
+            }
+          } else if (parsedStartDate) {
+            console.log('PARSING UNTIL: No validUntil in inviteData, using start date');
+            setSelectedEndDate(parsedStartDate);
+          } else {
+            console.log('PARSING UNTIL: No validUntil in inviteData and no start date, setting to today');
+            setSelectedEndDate(new Date());
+          }
+          
+          // Set the initial UI state based on which field was activated
+          if (activeDateField === 'validFrom') {
+            console.log('Setting activeDateChip to from based on activeDateField');
+            setActiveDateChip('from');
+          } else if (activeDateField === 'validUntil') {
+            console.log('Setting activeDateChip to to based on activeDateField');
+            setActiveDateChip('to');
+          }
+          
+          console.log('SETUP: Setting isAllDay to', inviteData.isAllDay);
+          setIsAllDay(inviteData.isAllDay);
+        }
+        
+        // Log the state that should be used
+        console.log('INITIALIZED STATE:', {
+          selectedStartDate: selectedStartDate ? formatShortDate(selectedStartDate) : 'null',
+          selectedEndDate: selectedEndDate ? formatShortDate(selectedEndDate) : 'null',
+          fromTime,
+          toTime,
+          isAllDay
+        });
+      }, 0);
     } else {
       // Animate the bottom sheet down
       Animated.parallel([
@@ -142,7 +230,23 @@ const InviteDuration: React.FC<InviteDurationProps> = ({
         pan.setValue(0);
       });
     }
-  }, [visible, translateY, opacity, pan, inviteData, activeDateField]);
+  }, [visible, translateY, opacity, pan, inviteData, activeDateField, setInviteData]);
+
+  // Add logging for component props on mount and update
+  useEffect(() => {
+    if (visible) {
+      // Log final state after initialization (using timeout to ensure state is updated)
+      setTimeout(() => {
+        console.log('FINAL STATE AFTER INIT:', {
+          selectedStartDate: selectedStartDate ? formatShortDate(selectedStartDate) : null,
+          selectedEndDate: selectedEndDate ? formatShortDate(selectedEndDate) : null,
+          fromTime,
+          toTime,
+          isAllDay
+        });
+      }, 100);
+    }
+  }, [visible, selectedStartDate, selectedEndDate, fromTime, toTime, isAllDay]);
 
   const handleOverlayPress = useCallback(() => {
     onClose();
@@ -274,9 +378,9 @@ const InviteDuration: React.FC<InviteDurationProps> = ({
       setSelectedEndDate(null);
     } else {
       if (date.getTime() === selectedStartDate.getTime()) {
-        // If clicking the same date again, just clear the end date
-        console.log('Clicking same date - clearing end date');
-        setSelectedEndDate(null);
+        // If clicking the same date again, keep it as both start and end date
+        console.log('Clicking same date - setting as both start and end date');
+        setSelectedEndDate(date);
       } else if (date < selectedStartDate) {
         // If selected date is before current start date, swap them
         console.log('Date is before start date - swapping dates');
@@ -288,62 +392,251 @@ const InviteDuration: React.FC<InviteDurationProps> = ({
         setSelectedEndDate(date);
       }
     }
-    
-    // Log state after operation (will show previous state due to React state update timing)
-    setTimeout(() => {
-      console.log('After update - will only be accurate in next render cycle');
-    }, 0);
   };
   
-  // Format date for display (Jan 21, 2023)
-  const formatShortDate = (date: Date | null) => {
-    if (!date) return 'Add Date';
+  // Use DateService helper functions
+  const getTimePickerDate = () => {
+    // Create a date object using the current date
+    const now = new Date();
     
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
-  };
-  
-  // Handle save
-  const handleSave = () => {
-    if (!selectedStartDate) return;
-    
-    let fromDateStr = formatDate(selectedStartDate);
-    let toDateStr = selectedEndDate ? formatDate(selectedEndDate) : fromDateStr;
-    
-    const updatedInviteData = {...inviteData};
-    
-    if (activeDateField === 'validFrom') {
-      updatedInviteData.validFrom = isAllDay ? fromDateStr : `${fromDateStr}, ${fromTime}`;
-      // Always update the end date when setting start date for better UX
-      updatedInviteData.validUntil = isAllDay ? toDateStr : `${toDateStr}, ${toTime}`;
-    } else if (activeDateField === 'validUntil') {
-      updatedInviteData.validUntil = isAllDay ? toDateStr : `${toDateStr}, ${toTime}`;
-      
-      // If start date is empty, also set it
-      if (!updatedInviteData.validFrom) {
-        const startDateStr = formatDate(selectedStartDate);
-        updatedInviteData.validFrom = isAllDay ? startDateStr : `${startDateStr}, ${fromTime}`;
-      }
+    // If activeTimeField is 'from', use fromTime
+    if (activeTimeField === 'from' && fromTime) {
+      const timeDate = DateService.parseTimeString(fromTime);
+      if (timeDate) return timeDate;
+    } 
+    // If activeTimeField is 'to', use toTime
+    else if (activeTimeField === 'to' && toTime) {
+      const timeDate = DateService.parseTimeString(toTime);
+      if (timeDate) return timeDate;
     }
     
-    updatedInviteData.isAllDay = isAllDay;
+    return now;
+  };
+
+  // Log when time is selected
+  const handleTimeSelected = (event: any, selectedTime: any) => {
+    console.log('Time selected event:', event);
+    console.log('Time selected value:', selectedTime);
     
-    setInviteData(updatedInviteData);
-    onSave();
+    if (event.type === 'set' && selectedTime) {
+      // Format time value to string (e.g., "10:00 AM")
+      const hours = selectedTime.getHours();
+      const minutes = selectedTime.getMinutes();
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      const hour12 = hours % 12 || 12; // Convert 0 to 12 for 12-hour format
+      const timeString = `${hour12}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+      
+      // Update the appropriate time state based on activeTimeField
+      if (activeTimeField === 'from') {
+        setFromTime(timeString);
+      } else if (activeTimeField === 'to') {
+        setToTime(timeString);
+      }
+    }
+  };
+
+  // Additional logging for chip press handlers
+  const handleDateChipPress = (type: 'from' | 'to') => {
+    console.log(`===== DATE CHIP PRESSED: ${type} =====`);
+    console.log('Before state change:', {
+      isTimePickerVisible,
+      activeTimeField,
+      activeDateChip
+    });
+    
+    // If time picker is visible, close it to show calendar instead
+    if (isTimePickerVisible) {
+      console.log('Closing time picker to show calendar');
+      setIsTimePickerVisible(false);
+      setActiveTimeField(null);
+    }
+    
+    // Toggle the active date chip
+    if (activeDateChip === type) {
+      console.log(`Deactivating ${type} date chip`);
+      setActiveDateChip(null);
+    } else {
+      console.log(`Activating ${type} date chip and deactivating time`);
+      setActiveDateChip(type);
+      setActiveTimeField(null); // Deactivate time chip when date chip is active
+    }
+  };
+
+  // Additional logging for time chip press
+  const handleTimeChipPress = (type: 'from' | 'to') => {
+    console.log(`===== TIME CHIP PRESSED: ${type} =====`);
+    console.log('Before state change:', {
+      isTimePickerVisible,
+      activeTimeField,
+      activeDateChip
+    });
+    
+    // If already showing this field's time picker, toggle it off
+    if (isTimePickerVisible && activeTimeField === type) {
+      console.log('Closing time picker - same chip clicked again');
+      setIsTimePickerVisible(false);
+      setActiveTimeField(null);
+    } else {
+      // Otherwise, show the time picker for this field
+      console.log(`Opening time picker for ${type} and deactivating date`);
+      setActiveTimeField(type);
+      setIsTimePickerVisible(true);
+      setActiveDateChip(null); // Deactivate date chip when time chip is active
+    }
   };
   
-  // Render date and time selection with guaranteed text values
+  // Add a function to convert dates to all-day format when needed
+  const applyAllDayToDate = (date: Date): Date => {
+    if (!inviteData.isAllDay) {
+      return date; // No changes needed if not all day
+    }
+    
+    console.log('[InviteDuration] Applying all-day format to date:', date.toString());
+    
+    // If all day is selected and this is the start date, set to beginning of day
+    if (activeDateField === 'validFrom') {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      console.log('[InviteDuration] Set to start of day:', startOfDay.toString());
+      return startOfDay;
+    } 
+    // If all day is selected and this is the end date, set to end of day
+    else if (activeDateField === 'validUntil') {
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      console.log('[InviteDuration] Set to end of day:', endOfDay.toString());
+      return endOfDay;
+    }
+    
+    return date;
+  };
+
+  // Handle toggle for all-day setting with improved logging
+  const handleAllDayToggle = (newValue: boolean) => {
+    console.log(`[InviteDuration] === All-day toggled: ${newValue} ===`);
+    console.log('[InviteDuration] Current state:', {
+      isAllDay,
+      selectedStartDate: selectedStartDate?.toString() || 'null',
+      selectedEndDate: selectedEndDate?.toString() || 'null', 
+      fromTime,
+      toTime
+    });
+    
+    setIsAllDay(newValue);
+    
+    // Immediately update parent component's state as well
+    // This ensures the all-day flag is updated in the parent even if save is not clicked
+    setInviteData(prev => ({
+      ...prev,
+      isAllDay: newValue
+    }));
+    
+    // If all-day is enabled, immediately adjust the times
+    if (newValue && selectedStartDate && selectedEndDate) {
+      console.log('[InviteDuration] Adjusting times for all-day event');
+      
+      // Create start and end dates with appropriate times
+      const startOfDay = new Date(selectedStartDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date(selectedEndDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      console.log('[InviteDuration] Adjusted times:', {
+        startOfDay: startOfDay.toString(),
+        endOfDay: endOfDay.toString()
+      });
+      
+      // Update the UI state
+      setSelectedStartDate(startOfDay);
+      setSelectedEndDate(endOfDay);
+      
+      // Set specific times for all-day events
+      setFromTime('12:00 AM');
+      setToTime('11:59 PM');
+      
+      // Format the dates for the parent component
+      const formattedStartDate = formatInviteDate(startOfDay, '12:00 AM', true);
+      const formattedEndDate = formatInviteDate(endOfDay, '11:59 PM', true);
+      
+      console.log('[InviteDuration] Formatted all-day dates:', {
+        formattedStartDate,
+        formattedEndDate
+      });
+      
+      // Update the parent component's state
+      setInviteData(prev => ({
+        ...prev,
+        isAllDay: newValue,
+        validFrom: formattedStartDate,
+        validUntil: formattedEndDate
+      }));
+    }
+  };
+
+  // Modify the handleSave function to apply all-day logic
+  const handleSave = () => {
+    console.log('[InviteDuration] Saving date selection...');
+    console.log(`[InviteDuration] Active field: ${activeDateField}`);
+    
+    if (!selectedStartDate || !selectedEndDate) {
+      console.warn('[InviteDuration] No date selected, using current date');
+      return;
+    }
+    
+    try {
+      // Apply all-day logic if needed
+      const adjustedStartDate = applyAllDayToDate(selectedStartDate);
+      const adjustedEndDate = applyAllDayToDate(selectedEndDate);
+      
+      // Format the dates
+      const formattedStartDate = formatInviteDate(adjustedStartDate, fromTime, isAllDay);
+      const formattedEndDate = formatInviteDate(adjustedEndDate, toTime, isAllDay);
+      
+      // Update state
+      setInviteData(prev => ({
+        ...prev,
+        validFrom: formattedStartDate,
+        validUntil: formattedEndDate
+      }));
+      
+      console.log('[InviteDuration] Dates updated for all-day event');
+    } catch (error) {
+      console.error('[InviteDuration] Error saving date:', error);
+    }
+    
+    // Close the duration picker
+    onSave();
+  };
+
+  // Use DateService for rendering date/time selection
   const renderDateTimeSelection = (type: 'from' | 'to') => {
     const isFrom = type === 'from';
     const date = isFrom ? selectedStartDate : selectedEndDate;
     const time = isFrom ? fromTime : toTime;
-    const setTime = isFrom ? setFromTime : setToTime;
     
-    const timeOptions = ['8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', 
-                          '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM'];
+    // Active state detection (only one can be active at a time)
+    const isTimeActive = activeTimeField === type;
+    const isDateActive = activeDateChip === type;
+    
+    // Data presence detection
+    const hasDateData = isValidDate(date);
+    const hasTimeData = time !== null && time.length > 0;
+    
+    // Calculate which chip should be highlighted with blue (can only be one per row)
+    const highlightDateChip = isDateActive || (!isTimeActive && hasDateData);
+    const highlightTimeChip = isTimeActive || (!isDateActive && !highlightDateChip && hasTimeData);
     
     // Always have a valid date to display
-    const formattedDate = date ? formatShortDate(date) : 'Add Date';
+    const formattedDate = formatShortDate(date);
+    
+    // Debug logging for chip state
+    console.log(`RENDER ${isFrom ? 'FROM' : 'TO'} CHIP:`);
+    console.log(`- Date: ${date ? date.toISOString() : 'null'}, formatted: ${formattedDate}`);
+    console.log(`- Time: ${time || 'null'}`);
+    console.log(`- isDateActive: ${isDateActive}, isTimeActive: ${isTimeActive}`);
+    console.log(`- hasDateData: ${hasDateData}, hasTimeData: ${hasTimeData}`);
+    console.log(`- highlightDateChip: ${highlightDateChip}, highlightTimeChip: ${highlightTimeChip}`);
     
     return (
       <View style={[
@@ -360,41 +653,48 @@ const InviteDuration: React.FC<InviteDurationProps> = ({
         </Text>
         
         <View style={styles.dateTimeChips}>
-          <View style={styles.dateChipContainer}>
-            <TouchableOpacity style={styles.dateChip}>
+          <TouchableOpacity 
+            style={[
+              styles.dateChip,
+              highlightDateChip && {
+                backgroundColor: '#23262D',
+                borderColor: '#6FDCFA'
+              }
+            ]}
+            onPress={() => handleDateChipPress(isFrom ? 'from' : 'to')}
+          >
+            <Text style={{
+              fontFamily: 'Outfit-SemiBold',
+              fontSize: 14,
+              color: highlightDateChip ? '#6FDCFA' : '#FFFFFF',
+              letterSpacing: 0.2,
+              textAlign: 'center',
+            }}>
+              {formattedDate}
+            </Text>
+          </TouchableOpacity>
+          
+          {!isAllDay && (
+            <TouchableOpacity 
+              style={[
+                styles.timeChip,
+                highlightTimeChip && {
+                  backgroundColor: '#23262D',
+                  borderColor: '#6FDCFA',
+                }
+              ]}
+              onPress={() => handleTimeChipPress(isFrom ? 'from' : 'to')}
+            >
               <Text style={{
                 fontFamily: 'Outfit-SemiBold',
                 fontSize: 14,
-                color: '#FFFFFF',
+                color: highlightTimeChip ? '#6FDCFA' : '#FFFFFF',
                 letterSpacing: 0.2,
                 textAlign: 'center',
               }}>
-                {formattedDate}
+                {time || 'Add Time'}
               </Text>
             </TouchableOpacity>
-          </View>
-          
-          {!isAllDay && (
-            <View style={styles.timeChipContainer}>
-              <TouchableOpacity 
-                style={styles.timeChip}
-                onPress={() => {
-                  const currentIndex = timeOptions.indexOf(time);
-                  const nextIndex = (currentIndex + 1) % timeOptions.length;
-                  setTime(timeOptions[nextIndex]);
-                }}
-              >
-                <Text style={{
-                  fontFamily: 'Outfit-SemiBold',
-                  fontSize: 14,
-                  color: '#FFFFFF',
-                  letterSpacing: 0.2,
-                  textAlign: 'center',
-                }}>
-                  {time}
-                </Text>
-              </TouchableOpacity>
-            </View>
           )}
         </View>
       </View>
@@ -440,13 +740,29 @@ const InviteDuration: React.FC<InviteDurationProps> = ({
         >
           {/* Header */}
           <View style={styles.bottomSheetHeader}>
-            <TouchableOpacity onPress={onClose} style={styles.headerButtonLeft}>
+            <TouchableOpacity 
+              onPress={() => {
+                // If time picker is visible, go back to calendar view
+                if (isTimePickerVisible) {
+                  setIsTimePickerVisible(false);
+                  setActiveTimeField(null);
+                } else {
+                  onClose();
+                }
+              }} 
+              style={styles.headerButtonLeft}
+            >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
             
-            <Text style={styles.headerTitleText}>{sheetTitle}</Text>
+            <Text style={styles.headerTitleText}>{getSheetTitle()}</Text>
             
-            <TouchableOpacity onPress={handleSave} style={styles.headerButtonRight}>
+            <TouchableOpacity 
+              onPress={() => {
+                handleSave();
+              }} 
+              style={styles.headerButtonRight}
+            >
               <Text style={styles.doneButtonText}>Done</Text>
             </TouchableOpacity>
           </View>
@@ -476,20 +792,38 @@ const InviteDuration: React.FC<InviteDurationProps> = ({
                 <View style={{flex: 1, alignItems: 'flex-end'}}>
                   <CustomToggle
                     value={isAllDay}
-                    onValueChange={setIsAllDay}
+                    onValueChange={handleAllDayToggle}
                   />
                 </View>
               </View>
             </View>
             
-            {/* Calendar */}
-            <View style={styles.calendarWrapper}>
-              <Calendar 
-                selectedStartDate={selectedStartDate}
-                selectedEndDate={selectedEndDate}
-                onDateSelect={handleDateSelect}
-              />
-            </View>
+            {/* Show either Calendar or Time Picker, not both */}
+            {isTimePickerVisible ? (
+              <View style={styles.timePickerWrapper}>
+                <View style={styles.timePickerCard}>
+                  <DateTimePicker
+                    value={getTimePickerDate()}
+                    mode="time"
+                    display="spinner"
+                    onChange={handleTimeSelected}
+                    style={styles.iosTimePicker}
+                    textColor="#FFFFFF"
+                    themeVariant="dark"
+                    accentColor="#6FDCFA"
+                    minuteInterval={1}
+                  />
+                </View>
+              </View>
+            ) : (
+              <View style={styles.calendarWrapper}>
+                <Calendar 
+                  selectedStartDate={selectedStartDate}
+                  selectedEndDate={selectedEndDate}
+                  onDateSelect={handleDateSelect}
+                />
+              </View>
+            )}
           </ScrollView>
         </View>
       </Animated.View>
@@ -624,10 +958,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  dateChipContainer: {
-    flex: 1,
-  },
   dateChip: {
+    flex: 1,
     backgroundColor: '#404759',
     borderWidth: 1,
     borderColor: '#646A78',
@@ -638,10 +970,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  timeChipContainer: {
-    flex: 1,
-  },
   timeChip: {
+    flex: 1,
     backgroundColor: '#404759',
     borderWidth: 1,
     borderColor: '#646A78',
@@ -663,6 +993,58 @@ const styles = StyleSheet.create({
   allDayToggleContainer: {
     flex: 1,
     alignItems: 'flex-end',
+  },
+  timePickerCard: {
+    width: '100%',
+    backgroundColor: '#404759',
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iosTimePicker: {
+    width: '100%',
+    height: 215,
+    backgroundColor: 'transparent',
+  },
+  timePickerWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    marginTop: 8,
+  },
+  pickerContainer: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  backButtonText: {
+    fontFamily: 'Outfit-Medium',
+    fontSize: 14,
+    color: '#6FDCFA',
+    textAlign: 'left',
+  },
+  selectionBarOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '50%',
+    height: 42,
+    marginTop: -21,
+    backgroundColor: '#2E333D',
+    zIndex: 1,
+  },
+  activeChip: {
+    backgroundColor: '#6FDCFA',
+    borderColor: '#6FDCFA',
   },
 });
 
