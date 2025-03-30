@@ -5,6 +5,7 @@ import HomeScreen from './src/screens/HomeScreen';
 import AccessScreen from './src/screens/AccessScreen';
 import VisitorScreen from './src/screens/VisitorScreen';
 import MoreScreen from './src/screens/MoreScreen';
+import CreateInviteScreen from './src/screens/CreateInviteScreen';
 import BottomNavigation from './src/components/BottomNavigation';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Font from 'expo-font';
@@ -25,12 +26,20 @@ const TABS = {
   MORE: 'more'
 };
 
+// Additional screens
+const SCREENS = {
+  CREATE_INVITE: 'create_invite'
+};
+
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
 const App = () => {
   // State to track the active tab
   const [activeTab, setActiveTab] = useState(TABS.HOME);
+  
+  // State to track active screen (for non-tab screens)
+  const [activeScreen, setActiveScreen] = useState(null);
   
   // State to track whether invite flow is active
   const [inviteFlowActive, setInviteFlowActive] = useState(false);
@@ -110,18 +119,52 @@ const App = () => {
   // Handle tab press/navigation
   const handleTabPress = (tabId) => {
     setActiveTab(tabId);
+    // Clear any non-tab screens
+    setActiveScreen(null);
   };
 
   // Handle invite flow state
   const handleInviteFlowStateChange = (isActive) => {
     setInviteFlowActive(isActive);
   };
+  
+  // Navigate to create invite screen
+  const navigateToCreateInvite = () => {
+    console.log('[App] Navigating to CreateInviteScreen');
+    setActiveScreen(SCREENS.CREATE_INVITE);
+    setInviteFlowActive(true);
+  };
+  
+  // Navigate back from create invite screen
+  const navigateBackFromCreateInvite = () => {
+    console.log('[App] Navigating back from CreateInviteScreen');
+    setActiveScreen(null);
+    setInviteFlowActive(false);
+  };
+  
+  // Handle create invite success
+  const handleCreateInviteSuccess = (inviteData) => {
+    console.log('[App] Create invite success:', inviteData);
+    setActiveScreen(null);
+    setInviteFlowActive(false);
+  };
 
-  // Render the current screen based on the active tab
+  // Render the current screen based on the active tab or special screens
   const renderScreen = () => {
+    // First check if a special screen is active
+    if (activeScreen === SCREENS.CREATE_INVITE) {
+      return (
+        <CreateInviteScreen 
+          onClose={navigateBackFromCreateInvite}
+          onCreateInvite={handleCreateInviteSuccess}
+        />
+      );
+    }
+    
+    // Otherwise render based on the active tab
     switch (activeTab) {
       case TABS.HOME:
-        return <HomeScreen />;
+        return <HomeScreen onNavigateToCreateInvite={navigateToCreateInvite} />;
       case TABS.DOOR:
         return <AccessScreen onNavigateToHome={() => setActiveTab(TABS.HOME)} />;
       case TABS.VISITOR:
@@ -136,7 +179,7 @@ const App = () => {
         // Use our new MoreScreen component
         return <MoreScreen onNavigateToHome={() => setActiveTab(TABS.HOME)} />;
       default:
-        return <HomeScreen />;
+        return <HomeScreen onNavigateToCreateInvite={navigateToCreateInvite} />;
     }
   };
 

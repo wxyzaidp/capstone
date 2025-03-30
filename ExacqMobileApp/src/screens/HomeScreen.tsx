@@ -70,7 +70,12 @@ const locationData = [
   }
 ];
 
-const HomeScreen = () => {
+// Update the HomeScreen interface to include the onNavigateToCreateInvite prop
+interface HomeScreenProps {
+  onNavigateToCreateInvite?: () => void;
+}
+
+const HomeScreen = ({ onNavigateToCreateInvite }: HomeScreenProps) => {
   // State for the active card index for pagination
   const [activeCardIndex, setActiveCardIndex] = useState(0);
   // State for the active door card index for pagination
@@ -300,11 +305,21 @@ const HomeScreen = () => {
   const [isBottomSheetVisible, setIsBottomSheetVisible] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState(locationData[0]);
 
-  // Handle location selection from bottom sheet
+  // Handler for location selection from bottom sheet
   const handleLocationSelect = (location) => {
     setSelectedLocation(location);
     setIsBottomSheetVisible(false);
     // In a real app, you might want to fetch data for the selected location here
+  };
+
+  // Handle invite button press - update to use the navigation prop
+  const handleInvitePress = () => {
+    console.log('Invite button pressed from HomeScreen');
+    if (onNavigateToCreateInvite) {
+      onNavigateToCreateInvite();
+    } else {
+      console.log('Navigation prop not provided');
+    }
   };
 
   return (
@@ -403,7 +418,7 @@ const HomeScreen = () => {
               visitors={sampleVisitors} 
               showTitle={true}
               title="UPCOMING VISITORS"
-              onInvitePress={() => Alert.alert('Invite', 'This would open the visitor invite flow')}
+              onInvitePress={handleInvitePress}
             />
           </View>
         </View>

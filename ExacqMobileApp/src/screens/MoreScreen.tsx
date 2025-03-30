@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { UI_COLORS, UI_TYPOGRAPHY, applyTypography } from '../design-system';
-import AccessTopBar from '../components/AccessTopBar';
+import MoreTopBar from '../components/MoreTopBar';
 import { Feather } from '@expo/vector-icons';
 import CustomToggle from '../components/ui/CustomToggle';
 
@@ -69,7 +69,7 @@ const MoreScreen: React.FC<MoreScreenProps> = ({ onNavigateToHome }) => {
         {
           id: 'biometric',
           title: 'Biometric Authentication',
-          icon: 'fingerprint',
+          icon: 'shield',
           toggle: true,
           value: biometricEnabled,
           onToggle: (value) => setBiometricEnabled(value)
@@ -160,10 +160,9 @@ const MoreScreen: React.FC<MoreScreenProps> = ({ onNavigateToHome }) => {
 
   return (
     <View style={styles.container}>
-      <AccessTopBar 
+      <MoreTopBar 
         title="Settings & More"
         onBackPress={handleBackPress}
-        onBuildingPress={() => console.log('Building pressed')}
       />
       
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>

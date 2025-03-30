@@ -18,6 +18,7 @@
         "backgroundColor": "#1E2021"
       },
       "permissions": ["VIBRATE"]
-    }
+    },
+    "newArchEnabled": true
   }
 } 
