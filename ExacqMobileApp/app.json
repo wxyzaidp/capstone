@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "Exacq Mobile",
+    "slug": "exacq-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "sdkVersion": "52.0.0",
+    "platforms": ["ios", "android", "web"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1E2021"
+      },
+      "permissions": ["VIBRATE"]
+    },
+    "newArchEnabled": true
+  }
+} 
