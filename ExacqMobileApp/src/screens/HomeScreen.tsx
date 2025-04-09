@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, Text, ScrollView, Alert, Dimensions, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { View, StyleSheet, Text, ScrollView, Alert, Dimensions, TouchableOpacity, Image, PanResponder } from 'react-native';
 import { UI_COLORS, UI_TYPOGRAPHY, applyTypography, PRIMITIVE } from '../design-system';
 import TopBar from '../components/TopBar';
 import SwipeUnlock from '../components/SwipeUnlock';
@@ -82,6 +82,11 @@ const HomeScreen = ({ onNavigateToCreateInvite }: HomeScreenProps) => {
   const [activeDoorIndex, setActiveDoorIndex] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
   const doorScrollViewRef = useRef<ScrollView>(null);
+  const doorInteractionActiveRef = useRef(false);
+  const touchStartYRef = useRef(0); // Track initial Y position of touches
+  const isScrollingRef = useRef(false); // Track if we're currently scrolling
+  const isGestureCanceledRef = useRef(false); // Track if the current gesture has been canceled
+  const currentScrollXRef = useRef(0); // Track current scroll position
   
   // State to control whether scrolling is enabled in the door carousel
   const [doorCarouselScrollEnabled, setDoorCarouselScrollEnabled] = useState(true);
@@ -135,18 +140,167 @@ const HomeScreen = ({ onNavigateToCreateInvite }: HomeScreenProps) => {
     }
   };
   
+  // Handlers for slider interaction - enhanced approach
+  const handleSliderInteractionStart = () => {
+    console.log('[ScrollView] scrollEnabled = false (from slider interaction)');
+    
+    // Immediately disable carousel scrolling
+    setDoorCarouselScrollEnabled(false);
+    
+    // Set a flag to indicate that an interaction is active
+    doorInteractionActiveRef.current = true;
+    
+    // IMPORTANT: Try to stop any in-progress scrolling
+    if (doorScrollViewRef.current) {
+      console.log('[HomeScreen] Attempting to stop scroll momentum');
+      try {
+        // Stop any existing momentum scroll by forcing the ScrollView to stay in place
+        const scrollView = doorScrollViewRef.current;
+        
+        // Get the last known scroll position from our most recent handleDoorScroll call
+        // This is more reliable than trying to access internal properties
+        const lastKnownScrollX = activeDoorIndex * (DOOR_CARD_WIDTH + DOOR_CARD_SPACING);
+        
+        // Force the ScrollView to stay in place with zero animation time
+        scrollView.scrollTo({x: lastKnownScrollX, y: 0, animated: false});
+        
+        // Add another attempt in the next frame to ensure it takes effect
+        requestAnimationFrame(() => {
+          scrollView.scrollTo({x: lastKnownScrollX, y: 0, animated: false});
+        });
+        
+        console.log(`[HomeScreen] Stopped scroll at x=${lastKnownScrollX.toFixed(2)}`);
+      } catch (error) {
+        console.error('[HomeScreen] Error stopping scroll:', error);
+      }
+    }
+  };
+  
+  const handleSliderInteractionEnd = () => {
+    console.log('[HomeScreen] handleSliderInteractionEnd called');
+    
+    // Use requestAnimationFrame to ensure this runs on the next UI cycle
+    // This prevents any race conditions with touch events
+    requestAnimationFrame(() => {
+      // Clear the interaction flag
+      doorInteractionActiveRef.current = false;
+      
+      // Ensure a small delay before enabling scrolling again
+      // This helps prevent accidental scrolling right after a swipe
+      setTimeout(() => {
+        if (!doorInteractionActiveRef.current) {
+          console.log('[ScrollView] scrollEnabled = true (after delay from interaction end)');
+          setDoorCarouselScrollEnabled(true);
+        }
+      }, 300);
+    });
+  };
+
+  // Helper function to determine if the touch crossed the boundary from top to bottom
+  const didCrossBoundary = (startY: number, currentY: number): boolean => 
+    startY < DOOR_CARD_BOUNDARY_Y && currentY > DOOR_CARD_BOUNDARY_Y;
+  
+  // Utility to snap to the nearest card
+  const snapToNearestCard = (scrollX: number): void => {
+    if (!doorScrollViewRef.current) return;
+    
+    try {
+      const doorWidth = DOOR_CARD_WIDTH + DOOR_CARD_SPACING;
+      const nearestIndex = Math.round(scrollX / doorWidth);
+      const x = nearestIndex * doorWidth;
+      
+      console.log(`[Scroll] Snapping to card index ${nearestIndex} at x=${x}`);
+      
+      // Disable scrolling to prevent further movement
+      console.log('[ScrollView] scrollEnabled = false (from boundary cross)');
+      setDoorCarouselScrollEnabled(false);
+      
+      // Force scroll to the nearest card
+      doorScrollViewRef.current.scrollTo({ x, animated: true });
+      
+      // Update the active index
+      setActiveDoorIndex(nearestIndex);
+      
+      // Re-enable scrolling after animation completes with a safe delay
+      setTimeout(() => {
+        if (!doorInteractionActiveRef.current && !isGestureCanceledRef.current) {
+          console.log('[ScrollView] scrollEnabled = true (after snap delay)');
+          setDoorCarouselScrollEnabled(true);
+        }
+      }, 300);
+    } catch (error) {
+      console.error('[HomeScreen] Error in snapToNearestCard:', error);
+    }
+  };
+  
+  // Calculate the boundary Y position for door cards - approximately where the swipe button starts
+  const DOOR_CARD_HEIGHT = 180; // Adjust based on your SwipeUnlock component height
+  const DOOR_CARD_BOUNDARY_Y = DOOR_CARD_HEIGHT * 0.6; // The Y position where the bottom half starts (60% from top)
+
+  // Create a pan responder to monitor touch positions during door carousel scrolling
+  const doorCarouselPanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false, // Let ScrollView handle initial touch
+    onMoveShouldSetPanResponder: () => false, // Let ScrollView handle movement initially
+    
+    // But capture the start location
+    onPanResponderGrant: (evt) => {
+      const { locationY } = evt.nativeEvent;
+      const inTopHalf = locationY < DOOR_CARD_BOUNDARY_Y;
+      
+      console.log(`[Gesture] Started at Y=${locationY} (${inTopHalf ? 'TOP HALF' : 'BOTTOM HALF'})`);
+      
+      touchStartYRef.current = locationY;
+      isScrollingRef.current = true;
+      isGestureCanceledRef.current = false;
+    },
+    
+    // Monitor movement to detect if we cross the boundary
+    onPanResponderMove: (evt) => {
+      if (isGestureCanceledRef.current) return;
+      
+      const { locationY } = evt.nativeEvent;
+      
+      // If we started in the top half but moved to bottom half
+      if (didCrossBoundary(touchStartYRef.current, locationY)) {
+        console.log('[Gesture] Crossed into bottom half! Attempting to cancel scroll.');
+        
+        // Mark this gesture as canceled to prevent further processing
+        isGestureCanceledRef.current = true;
+        
+        // Snap to the nearest card based on current scroll position
+        snapToNearestCard(currentScrollXRef.current);
+      }
+    },
+    
+    // Clean up when the gesture ends
+    onPanResponderRelease: () => {
+      console.log('[Gesture] Gesture ended. Cleaning up flags.');
+      isScrollingRef.current = false;
+      isGestureCanceledRef.current = false;
+    },
+    
+    onPanResponderTerminate: () => {
+      console.log('[Gesture] Gesture terminated. Cleaning up flags.');
+      isScrollingRef.current = false;
+      isGestureCanceledRef.current = false;
+    }
+  }), [activeDoorIndex]);
+
   // Handler for door carousel scroll events
   const handleDoorScroll = (event) => {
+    // Track the current scroll position for use with boundary crossing
     const scrollX = event.nativeEvent.contentOffset.x;
+    currentScrollXRef.current = scrollX;
+    
+    if (!doorInteractionActiveRef.current && !isGestureCanceledRef.current) {
+      console.log(`[Scroll] Position updated: x=${scrollX.toFixed(2)}`);
+    }
+    
     // Calculate index based on scroll position
     const doorWidth = DOOR_CARD_WIDTH + DOOR_CARD_SPACING;
-    const index = Math.max(0, Math.min(
-      Math.round(scrollX / doorWidth), 
-      doorAccess.length - 1
-    ));
-    
-    if (index !== activeDoorIndex) {
-      setActiveDoorIndex(index);
+    const newIndex = Math.round(scrollX / doorWidth);
+    if (newIndex !== activeDoorIndex && newIndex >= 0 && newIndex < doorAccess.length) {
+      setActiveDoorIndex(newIndex);
     }
   };
 
@@ -259,7 +413,7 @@ const HomeScreen = ({ onNavigateToCreateInvite }: HomeScreenProps) => {
   // Add Wallet button component - properly matches Figma design
   const AddToWalletButton = ({ onPress }) => (
     <View style={styles.walletContainer}>
-      <TouchableOpacity
+      <TouchableOpacity 
         style={[styles.walletButton, { backgroundColor: '#2E333D' }]}
         onPress={onPress}
       >
@@ -272,20 +426,6 @@ const HomeScreen = ({ onNavigateToCreateInvite }: HomeScreenProps) => {
       </TouchableOpacity>
     </View>
   );
-
-  // Handlers for slider interaction - enhanced approach
-  const handleSliderInteractionStart = () => {
-    // Immediately disable carousel scrolling
-    setDoorCarouselScrollEnabled(false);
-  };
-  
-  const handleSliderInteractionEnd = () => {
-    // Use requestAnimationFrame to ensure this runs on the next UI cycle
-    // This prevents any race conditions with touch events
-    requestAnimationFrame(() => {
-      setDoorCarouselScrollEnabled(true);
-    });
-  };
 
   // Utility to scroll to a specific door
   const scrollToDoor = (index: number) => {
@@ -321,6 +461,23 @@ const HomeScreen = ({ onNavigateToCreateInvite }: HomeScreenProps) => {
       console.log('Navigation prop not provided');
     }
   };
+
+  // Log when component mounts for debugging
+  useEffect(() => {
+    console.log('[HomeScreen] Component mounted - gesture tracking active');
+    
+    // Log the boundary position for clarity
+    console.log(`[Config] Door card boundary Y: ${DOOR_CARD_BOUNDARY_Y} (60% of card height)`);
+    
+    return () => {
+      console.log('[HomeScreen] Component unmounted');
+    };
+  }, []);
+
+  // Debug effect to log when scroll is enabled/disabled
+  useEffect(() => {
+    console.log(`[ScrollView] Scroll enabled = ${doorCarouselScrollEnabled}`);
+  }, [doorCarouselScrollEnabled]);
 
   return (
     <View style={styles.container}>
@@ -371,7 +528,15 @@ const HomeScreen = ({ onNavigateToCreateInvite }: HomeScreenProps) => {
         
         <View style={styles.section}>
           <SectionHeader title="QUICK DOOR ACCESS" />
-          <View>
+          <View 
+            {...doorCarouselPanResponder.panHandlers}
+            style={{ position: 'relative' }}
+            onLayout={(e) => {
+              // Log the actual dimensions to help with debugging
+              const { width, height } = e.nativeEvent.layout;
+              console.log(`[Layout] Door carousel container: ${width}x${height}`);
+            }}
+          >
             <ScrollView
               ref={doorScrollViewRef}
               horizontal
@@ -380,12 +545,15 @@ const HomeScreen = ({ onNavigateToCreateInvite }: HomeScreenProps) => {
               snapToInterval={DOOR_CARD_WIDTH + DOOR_CARD_SPACING}
               decelerationRate="fast"
               pagingEnabled={false}
-              scrollEventThrottle={16}
+              scrollEventThrottle={8} // More frequent updates
               snapToAlignment="start"
               scrollEnabled={doorCarouselScrollEnabled}
               onScroll={handleDoorScroll}
               directionalLockEnabled={true}
-              onMomentumScrollEnd={handleDoorScroll}
+              onMomentumScrollEnd={(e) => {
+                console.log('[Scroll] Momentum scroll ended');
+                handleDoorScroll(e);
+              }}
               keyboardShouldPersistTaps="handled"
             >
               {doorAccess.map((door) => (

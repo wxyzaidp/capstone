@@ -44,10 +44,14 @@ const GetStartedScreen: React.FC<GetStartedScreenProps> = ({
   const handleLogin = (username: string, password: string) => {
     // Handle login logic here
     console.log('Login attempt:', { username, password });
-    // Close the bottom sheet
-    setIsLoginVisible(false);
-    // Call the onGetStarted callback
-    onGetStarted();
+    
+    // Simulate API call with a delay before proceeding
+    setTimeout(() => {
+      // Close the bottom sheet
+      setIsLoginVisible(false);
+      // Call the onGetStarted callback
+      onGetStarted();
+    }, 1500); // 1.5 second delay to show loading state
   };
 
   return (

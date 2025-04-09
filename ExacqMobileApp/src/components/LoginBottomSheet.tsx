@@ -19,6 +19,7 @@ import {
 import { UI_COLORS } from '../design-system/colors';
 import { UI_TYPOGRAPHY, applyTypography } from '../design-system/typography';
 import EyeIcon from './icons/EyeIcon';
+import { Svg, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
 interface LoginBottomSheetProps {
   visible: boolean;
@@ -29,6 +30,83 @@ interface LoginBottomSheetProps {
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const BOTTOM_SHEET_HEIGHT = SCREEN_HEIGHT * 0.9;
 
+// Custom loading indicator matching the image
+const LoadingIndicator = ({ size = 24 }: { size?: number }) => {
+  const spinValue = useRef(new Animated.Value(0)).current;
+  
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.timing(spinValue, {
+        toValue: 1,
+        duration: 1200, // Slightly faster rotation to match image
+        useNativeDriver: true,
+      })
+    );
+    animation.start();
+    
+    return () => {
+      animation.stop();
+    };
+  }, [spinValue]);
+  
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  // SVG settings to match the image
+  const strokeWidth = size * 0.15; // Thicker stroke width
+  const radius = (size / 2) - (strokeWidth / 2);
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference * 0.7; // Show 30% of the circle
+
+  return (
+    <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+      {/* Track (background circle) */}
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          strokeWidth={strokeWidth}
+          stroke="rgba(70, 78, 97, 0.35)"
+          fill="none"
+        />
+      </Svg>
+      
+      {/* Animated indicator */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          width: size,
+          height: size,
+          transform: [{ rotate: spin }],
+        }}
+      >
+        <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          <Defs>
+            <LinearGradient id="grad" x1="0" y1="0" x2="1" y2="0">
+              <Stop offset="0" stopColor="#64DCFA" stopOpacity="1" />
+              <Stop offset="1" stopColor="#008BAD" stopOpacity="0" />
+            </LinearGradient>
+          </Defs>
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            strokeWidth={strokeWidth}
+            stroke="url(#grad)"
+            fill="none"
+            strokeLinecap="round"
+            strokeDasharray={`${circumference}`}
+            strokeDashoffset={dashOffset}
+          />
+        </Svg>
+      </Animated.View>
+    </View>
+  );
+};
+
 const LoginBottomSheet: React.FC<LoginBottomSheetProps> = ({
   visible,
   onClose,
@@ -38,6 +116,7 @@ const LoginBottomSheet: React.FC<LoginBottomSheetProps> = ({
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [focusedInput, setFocusedInput] = useState<'username' | 'password' | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const usernameInputRef = useRef<TextInput>(null);
   const passwordInputRef = useRef<TextInput>(null);
 
@@ -202,9 +281,17 @@ const LoginBottomSheet: React.FC<LoginBottomSheetProps> = ({
 
   const handleLogin = () => {
     if (username && password) {
+      setIsLoading(true);
       onLogin(username, password);
     }
   };
+
+  // Add this useEffect to reset loading state when modal closes
+  useEffect(() => {
+    if (!visible) {
+      setIsLoading(false);
+    }
+  }, [visible]);
 
   const canLogin = username.length > 0 && password.length > 0;
 
@@ -274,6 +361,7 @@ const LoginBottomSheet: React.FC<LoginBottomSheetProps> = ({
                     onFocus={() => setFocusedInput('username')}
                     onBlur={() => setFocusedInput(null)}
                     selectionColor={UI_COLORS.PRIMARY.DEFAULT}
+                    textAlignVertical="center"
                   />
                 </View>
 
@@ -299,6 +387,7 @@ const LoginBottomSheet: React.FC<LoginBottomSheetProps> = ({
                     onFocus={() => setFocusedInput('password')}
                     onBlur={() => setFocusedInput(null)}
                     selectionColor={UI_COLORS.PRIMARY.DEFAULT}
+                    textAlignVertical="center"
                   />
                   <TouchableOpacity 
                     style={styles.visibilityButton}
@@ -315,12 +404,20 @@ const LoginBottomSheet: React.FC<LoginBottomSheetProps> = ({
               <TouchableOpacity 
                 style={[
                   styles.continueButton,
-                  !canLogin && styles.continueButtonDisabled
+                  !canLogin && styles.continueButtonDisabled,
+                  isLoading && styles.continueButtonLoading
                 ]} 
                 onPress={handleLogin}
-                disabled={!canLogin}
+                disabled={!canLogin || isLoading}
               >
-                <Text style={styles.continueButtonText}>Continue</Text>
+                {isLoading ? (
+                  <View style={styles.buttonContentContainer}>
+                    <LoadingIndicator size={20} />
+                    <Text style={styles.continueButtonTextLoading}>Continue</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.continueButtonText}>Continue</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -415,6 +512,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(70, 78, 97, 0.35)',
     borderRadius: 12,
     backgroundColor: 'transparent',
+    height: 56,
   },
   inputWrapperFocused: {
     borderColor: UI_COLORS.PRIMARY.DEFAULT,
@@ -427,10 +525,7 @@ const styles = StyleSheet.create({
     color: UI_COLORS.TEXT.PRIMARY,
     ...applyTypography(UI_TYPOGRAPHY.BODY_LARGE),
     textAlignVertical: 'center',
-    includeFontPadding: false,
     padding: 0,
-    margin: 0,
-    lineHeight: 24,
   },
   visibilityButton: {
     padding: 16,
@@ -441,18 +536,34 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     backgroundColor: UI_COLORS.BACKGROUND.CARD,
   },
+  buttonContentContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
   continueButton: {
     backgroundColor: UI_COLORS.PRIMARY.DEFAULT,
     borderRadius: 12,
     paddingVertical: 16,
+    paddingHorizontal: 24,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   continueButtonDisabled: {
     opacity: 0.5,
   },
+  continueButtonLoading: {
+    backgroundColor: 'rgba(70, 78, 97, 0.35)',
+  },
   continueButtonText: {
     ...applyTypography(UI_TYPOGRAPHY.BUTTON_LARGE, {
       color: UI_COLORS.BACKGROUND.PAGE,
+    }),
+  },
+  continueButtonTextLoading: {
+    ...applyTypography(UI_TYPOGRAPHY.BUTTON_LARGE, {
+      color: '#FFFFFF',
     }),
   },
 });

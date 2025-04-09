@@ -483,65 +483,80 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
     };
     
     return (
-      <TouchableOpacity 
-        style={[
-          styles.inputContainer, 
-          isFocused && styles.inputContainerFocused
-        ]}
-        onPress={(isDateField || isHostField) ? handlePress : undefined}
-        activeOpacity={(isDateField || isHostField) ? 0.7 : 1}
-      >
-        {isDateField ? (
-          // FIXED: Date field rendering to exactly match design
-          hasValue ? (
-            // When date has a value: Label at top, date value below
-            <>
-              <Text style={styles.inputLabel}>
-                {label}{optional ? ' (optional)' : ''}
-              </Text>
+      <View style={{position: 'relative'}}>
+        <TouchableOpacity 
+          style={[
+            styles.inputContainer, 
+            isFocused && styles.inputContainerFocused
+          ]}
+          onPress={isDateField ? handlePress : undefined}
+          activeOpacity={isDateField ? 0.7 : 1}
+        >
+          {isDateField ? (
+            // Date field rendering to exactly match design
+            hasValue ? (
+              <>
+                <Text style={styles.inputLabel}>
+                  {label}{optional ? ' (optional)' : ''}
+                </Text>
+                <View style={styles.dateDisplayContainer}>
+                  <Text style={[styles.dateText, styles.inputWithValue]}>
+                    {value as string}
+                  </Text>
+                </View>
+              </>
+            ) : (
               <View style={styles.dateDisplayContainer}>
-                <Text style={[styles.dateText, styles.inputWithValue]}>
-                  {value as string}
+                <Text style={[styles.dateText, {color: '#B6BDCD'}]}>
+                  {label}{optional ? ' (optional)' : ''}
                 </Text>
               </View>
-            </>
+            )
           ) : (
-            // When date is empty: Just show placeholder
-            <View style={styles.dateDisplayContainer}>
-              <Text style={[styles.dateText, {color: '#B6BDCD'}]}>
-                {label}{optional ? ' (optional)' : ''}
-              </Text>
-            </View>
-          )
-        ) : (
-          // Regular text input fields
-          <>
-            {hasValue && (
-          <Text style={styles.inputLabel}>
-            {label}{optional ? ' (optional)' : ''}
-          </Text>
-        )}
-        <TextInput
-              style={[
-                styles.input,
-                hasValue && styles.inputWithValue
-              ]}
-              value={value as string}
-          onChangeText={(text) => updateField(field, text)}
-              placeholder={!hasValue ? `${label}${optional ? ' (optional)' : ''}` : ''}
-          placeholderTextColor="#B6BDCD"
-              {...inputProps}
-              onFocus={() => handleFocus(field)}
-              onBlur={handleBlur}
-              editable={!isHostField} // Make the host field not directly editable
-            />
-          </>
-        )}
+            <>
+              {hasValue && (
+                <Text style={styles.inputLabel}>
+                  {label}{optional ? ' (optional)' : ''}
+                </Text>
+              )}
+              <TextInput
+                style={[
+                  styles.input,
+                  hasValue && styles.inputWithValue
+                ]}
+                value={value as string}
+                onChangeText={(text) => updateField(field, text)}
+                placeholder={!hasValue ? `${label}${optional ? ' (optional)' : ''}` : ''}
+                placeholderTextColor="#B6BDCD"
+                {...inputProps}
+                onFocus={() => handleFocus(field)}
+                onBlur={handleBlur}
+                editable={!isHostField}
+              />
+            </>
+          )}
+          
+          {(isDateField || isHostField) && (
+            <ChevronIcon direction="right" width={20} height={20} fill="#FFFFFF" />
+          )}
+        </TouchableOpacity>
         
-        {(field === 'visitorName' || isDateField || isHostField) && (
-          <ChevronIcon direction="right" width={20} height={20} fill="#FFFFFF" />
+        {/* Transparent overlay to capture touches for host field */}
+        {isHostField && (
+          <TouchableOpacity
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              backgroundColor: 'transparent'
+            }}
+            onPress={handlePress}
+            activeOpacity={1}
+          />
         )}
-      </TouchableOpacity>
+      </View>
     );
   };
 
