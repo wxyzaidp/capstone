@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { View, StyleSheet, Image, TouchableOpacity, Dimensions, Text } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, Rect, Path, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import { Image as ExpoImage } from 'expo-image';
+import { Image as RNImage } from 'react-native';
+import { UI_TYPOGRAPHY, applyTypography } from '../design-system';
 
 // Define constants
 const APP_HORIZONTAL_MARGIN = 16; // Standard margin for the app
@@ -22,11 +25,11 @@ const BORDER_RADIUS = 19.58; // Exact border radius from Figma (19.5808391571044
 const CARD_SPACING = 12; // Gap between cards from Figma
 
 // Card background images
-const cardBackgrounds = [
-  require('../assets/Cards_1_bg.png'),
+const backgroundImages = [
+  require('../assets/Card_background.png'),
   require('../assets/Cards_2_bg.png'),
   require('../assets/Cards_3_bg.png'),
-  require('../assets/Cards_4_bg.png'),
+  require('../assets/Cards_1_bg.png'),
 ];
 
 // Create a shuffled array of indices (0-3) that will be used to assign
@@ -94,11 +97,24 @@ const ExacqLogo = ({ width = 38, height = 37 }) => (
   </Svg>
 );
 
+// Card Background with Image
+const CardBackground = ({ imageIndex }: { imageIndex: number }) => (
+  <View style={styles.backgroundImageContainer}>
+    <ExpoImage
+      source={backgroundImages[imageIndex]}
+      style={styles.backgroundImage}
+      contentFit="cover"
+      transition={200}
+      cachePolicy="memory-disk"
+    />
+  </View>
+);
+
 export default function SimpleCard({ onPress, name = "Jacob B", role = "Security", index = 0 }: SimpleCardProps) {
   // Get the background based on the card's index, using our shuffled mapping
   // This ensures each card gets a unique background, but the assignment changes on reload
   const backgroundIndex = backgroundIndices[index % backgroundIndices.length];
-  const backgroundImage = cardBackgrounds[backgroundIndex];
+  const backgroundImage = backgroundImages[backgroundIndex];
   
   return (
     <TouchableOpacity 
@@ -107,14 +123,13 @@ export default function SimpleCard({ onPress, name = "Jacob B", role = "Security
       style={styles.touchable}
     >
       <View style={styles.card}>
-        <Image 
-          source={backgroundImage}
-          style={styles.backgroundImage}
-          resizeMode="cover"
-        />
+        {/* Background Layer */}
+        <CardBackground imageIndex={backgroundIndex} />
+        
+        {/* Border Layer */}
         <CardBorder />
         
-        {/* Card Content */}
+        {/* Content Layer */}
         <View style={styles.contentContainer}>
           {/* Exacq Logo */}
           <View style={styles.logoContainer}>
@@ -162,12 +177,15 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 8,
   },
+  backgroundImageContainer: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    zIndex: 1,
+  },
   backgroundImage: {
     width: '100%',
     height: '100%',
-    position: 'absolute',
-    top: 0,
-    left: 0,
   },
   borderSvg: {
     position: 'absolute',
@@ -176,7 +194,11 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   contentContainer: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     padding: 24, // Update padding to match Figma design (24px)
     justifyContent: 'space-between',
     zIndex: 20,

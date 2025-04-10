@@ -1,13 +1,20 @@
-import React from 'react';
+import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, Image, TouchableOpacity, Dimensions } from 'react-native';
 import { 
   UI_TYPOGRAPHY, 
-  applyTypography
+  applyTypography,
+  UI_COLORS
 } from '../design-system';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, Rect, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { Text } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
+import SimpleCard from './SimpleCard';
+import { CommonStyles } from '../styles';
+import { NavigationProp, useNavigation } from '@react-navigation/native';
+// TODO: Create navigation types if not available
+// import { RootStackParamList } from '../navigation/types';
 
 // Card item interface
 interface CardItem {
@@ -74,6 +81,34 @@ const CardBackground: React.FC = () => (
   </View>
 );
 
+// Gradient Border Component
+const GradientBorder = () => {
+  return (
+    <View style={styles.gradientBorderContainer}>
+      <Svg height="100%" width="100%" style={styles.gradientBorder}>
+        <Defs>
+          <SvgLinearGradient id="border-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <Stop offset="0%" stopColor="rgba(100, 220, 250, 0.6)" />
+            <Stop offset="100%" stopColor="rgba(100, 220, 250, 0.2)" />
+          </SvgLinearGradient>
+        </Defs>
+        <Rect
+          x="0.5"
+          y="0.5"
+          width="99%"
+          height="99%"
+          rx="19"
+          ry="19"
+          strokeWidth="1.5"
+          stroke="url(#border-gradient)"
+          fill="transparent"
+          strokeDasharray="5,5"
+        />
+      </Svg>
+    </View>
+  );
+};
+
 const CardSlider: React.FC<CardSliderProps> = ({ 
   title, 
   cards,
@@ -102,7 +137,7 @@ const CardSlider: React.FC<CardSliderProps> = ({
 
   return (
     <View style={styles.container}>
-      {title && <Text style={styles.title}>{title}</Text>}
+      {title && <Text style={[CommonStyles.subtitle, styles.title]}>{title}</Text>}
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false}
@@ -131,27 +166,25 @@ const CardSlider: React.FC<CardSliderProps> = ({
         {/* Add Card Button */}
         {onAddCardPress && (
           <TouchableOpacity 
-            style={styles.addCardContainer} 
-            activeOpacity={0.8}
+            style={[styles.addCardButton, { marginLeft: cards.length > 0 ? 16 : 0 }]} 
             onPress={onAddCardPress}
           >
-            <LinearGradient
-              colors={['#2F353E', '#23262D']}
-              style={styles.addCardGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <View style={styles.addCardButton}>
-                <Feather name="plus" size={36} color="#64DCFA" />
-                <Text style={styles.addCardText}>Add Card</Text>
-              </View>
-            </LinearGradient>
+            <View style={[CommonStyles.centerContent, styles.addCardContent]}>
+              <ExpoImage
+                source={require('../assets/add-card-icon.png')}
+                style={styles.addIcon}
+                contentFit="contain"
+                cachePolicy="memory"
+              />
+              <Text style={styles.addCardText}>Add Card</Text>
+            </View>
+            <GradientBorder />
           </TouchableOpacity>
         )}
       </ScrollView>
 
       {/* Pagination indicators */}
-      <View style={styles.pagination}>
+      <View style={[CommonStyles.row, CommonStyles.centerContent, styles.pagination]}>
         {displayCards.map((_, index) => (
           <View
             key={index}
@@ -172,7 +205,6 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   title: {
-    ...applyTypography(UI_TYPOGRAPHY.SUBTITLE),
     marginBottom: 12,
     paddingHorizontal: 16,
   },
@@ -190,6 +222,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     backgroundColor: '#1B2024', // Fallback background color
+    ...CommonStyles.shadow,
   },
   backgroundImageContainer: {
     position: 'absolute',
@@ -208,38 +241,28 @@ const styles = StyleSheet.create({
     height: '100%',
     zIndex: 10,
   },
-  addCardContainer: {
+  addCardButton: {
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
     borderRadius: 19.58,
     overflow: 'hidden',
     position: 'relative',
   },
-  addCardGradient: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(100, 220, 250, 0.3)',
-    borderRadius: 19.58,
-    borderStyle: 'dashed',
-  },
-  addCardButton: {
+  addCardContent: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    height: '100%',
+  },
+  addIcon: {
+    width: 24,
+    height: 24,
+    marginRight: 8,
   },
   addCardText: {
-    fontFamily: 'Outfit',
-    fontWeight: '500',
+    fontFamily: 'Outfit-Medium',
     fontSize: 14,
-    color: '#64DCFA',
-    marginLeft: 8,
+    color: UI_COLORS.PRIMARY.DEFAULT,
   },
   pagination: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
     marginTop: 16,
   },
   paginationDot: {
@@ -254,6 +277,22 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  gradientBorderContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  gradientBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
 });
 

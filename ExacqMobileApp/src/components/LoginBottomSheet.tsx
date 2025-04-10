@@ -20,17 +20,20 @@ import { UI_COLORS } from '../design-system/colors';
 import { UI_TYPOGRAPHY, applyTypography } from '../design-system/typography';
 import EyeIcon from './icons/EyeIcon';
 import { Svg, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import PasscodeSetupScreen from './PasscodeSetupScreen';
 
 interface LoginBottomSheetProps {
   visible: boolean;
   onClose: () => void;
   onLogin: (username: string, password: string) => void;
+  onVerify: (otp: string) => void;
+  onPasscodeSet?: (passcode: string) => void;
 }
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const BOTTOM_SHEET_HEIGHT = SCREEN_HEIGHT * 0.9;
 
-// Custom loading indicator matching the image
+// Custom loading indicator
 const LoadingIndicator = ({ size = 24 }: { size?: number }) => {
   const spinValue = useRef(new Animated.Value(0)).current;
   
@@ -38,7 +41,7 @@ const LoadingIndicator = ({ size = 24 }: { size?: number }) => {
     const animation = Animated.loop(
       Animated.timing(spinValue, {
         toValue: 1,
-        duration: 1200, // Slightly faster rotation to match image
+        duration: 1200,
         useNativeDriver: true,
       })
     );
@@ -54,15 +57,13 @@ const LoadingIndicator = ({ size = 24 }: { size?: number }) => {
     outputRange: ['0deg', '360deg'],
   });
 
-  // SVG settings to match the image
-  const strokeWidth = size * 0.15; // Thicker stroke width
+  const strokeWidth = size * 0.15;
   const radius = (size / 2) - (strokeWidth / 2);
   const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference * 0.7; // Show 30% of the circle
+  const dashOffset = circumference * 0.7;
 
   return (
     <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-      {/* Track (background circle) */}
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <Circle
           cx={size / 2}
@@ -74,7 +75,6 @@ const LoadingIndicator = ({ size = 24 }: { size?: number }) => {
         />
       </Svg>
       
-      {/* Animated indicator */}
       <Animated.View
         style={{
           position: 'absolute',
@@ -107,34 +107,211 @@ const LoadingIndicator = ({ size = 24 }: { size?: number }) => {
   );
 };
 
+// Completely fresh input field implementation
+const FreshTextInput = ({
+  label,
+  value,
+  onChangeText,
+  secure = false,
+  returnKeyType = 'next',
+  onSubmit,
+  testID,
+  autoFocus = false,
+  onToggleVisibility,
+  isVisible,
+  autoComplete,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  secure?: boolean;
+  returnKeyType?: 'done' | 'go' | 'next' | 'search' | 'send';
+  onSubmit?: () => void;
+  testID?: string;
+  autoFocus?: boolean;
+  onToggleVisibility?: () => void;
+  isVisible?: boolean;
+  autoComplete?: 'username' | 'password' | 'off';
+}) => {
+  // Local state for this field only
+  const [focused, setFocused] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+  
+  // Clear selection on blur to prevent highlight issues
+  const clearSelection = () => {
+    if (inputRef.current) {
+      inputRef.current.setNativeProps({
+        selection: { start: 0, end: 0 }
+      });
+    }
+  };
+  
+  const handleSubmit = () => {
+    clearSelection();
+    
+    if (inputRef.current) {
+      inputRef.current.blur();
+    }
+    
+    // Small delay to ensure proper event order
+    if (onSubmit) {
+      setTimeout(onSubmit, 50);
+    }
+  };
+  
+  // Handle focus styling
+  const showFloatingLabel = focused || value.length > 0;
+  
+  useEffect(() => {
+    // Auto focus if needed, but with a delay to ensure component is fully mounted
+    if (autoFocus) {
+      const timer = setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+        }
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus]);
+
+  return (
+    <View style={[
+      freshStyles.container,
+      focused ? freshStyles.containerFocused : null,
+    ]}>
+      {showFloatingLabel && (
+        <Text style={freshStyles.label}>{label}</Text>
+      )}
+      
+      <TextInput
+        ref={inputRef}
+        style={[
+          freshStyles.input,
+          showFloatingLabel ? freshStyles.inputWithLabel : null,
+        ]}
+        placeholder={showFloatingLabel ? '' : label}
+        placeholderTextColor="#B6BDCD"
+        value={value}
+        onChangeText={onChangeText}
+        secureTextEntry={secure && !isVisible}
+        returnKeyType={returnKeyType}
+        blurOnSubmit={true}
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardAppearance="dark"
+        textContentType={secure ? 'password' : 'username'}
+        autoComplete={autoComplete}
+        testID={testID}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          setFocused(false);
+          clearSelection();
+        }}
+        onSubmitEditing={handleSubmit}
+        selectionColor={UI_COLORS.PRIMARY.DEFAULT}
+      />
+      
+      {secure && onToggleVisibility && (
+        <TouchableOpacity 
+          style={freshStyles.visibilityToggle} 
+          onPress={onToggleVisibility} 
+          activeOpacity={0.7}
+        >
+          <EyeIcon color="#B6BDCD" isVisible={isVisible || false} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+};
+
+const freshStyles = StyleSheet.create({
+  container: {
+    borderWidth: 1,
+    borderColor: '#717C98',
+    borderRadius: 12,
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    position: 'relative',
+  },
+  containerFocused: {
+    borderColor: UI_COLORS.PRIMARY.DEFAULT,
+  },
+  label: {
+    position: 'absolute',
+    top: 8,
+    left: 16,
+    fontFamily: 'Outfit-Regular',
+    fontSize: 12,
+    color: '#B6BDCD',
+  },
+  input: {
+    flex: 1,
+    height: '100%',
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontFamily: 'Outfit-Regular',
+    paddingVertical: 0,
+  },
+  inputWithLabel: {
+    paddingTop: 16,
+  },
+  visibilityToggle: {
+    padding: 8,
+  },
+});
+
 const LoginBottomSheet: React.FC<LoginBottomSheetProps> = ({
   visible,
   onClose,
   onLogin,
+  onVerify,
+  onPasscodeSet,
 }) => {
+  // ====== COMPLETELY FRESH IMPLEMENTATION ======
+  // Core state
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-  const [focusedInput, setFocusedInput] = useState<'username' | 'password' | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const usernameInputRef = useRef<TextInput>(null);
-  const passwordInputRef = useRef<TextInput>(null);
+  
+  // OTP state
+  const [isOtpView, setIsOtpView] = useState(false);
+  const [otp, setOtp] = useState<string[]>(Array(6).fill(''));
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [isVerifyLoading, setIsVerifyLoading] = useState(false);
+  const inputRefs = useRef<Array<TextInput | null>>(Array(6).fill(null));
+  
+  // Passcode setup state
+  const [isPasscodeSetupVisible, setIsPasscodeSetupVisible] = useState(false);
 
+  // Animation values
   const translateY = useRef(new Animated.Value(BOTTOM_SHEET_HEIGHT)).current;
   const opacity = useRef(new Animated.Value(0)).current;
-  
-  // Values for swipe-down-to-close
   const pan = useRef(new Animated.Value(0)).current;
   const dismissThreshold = BOTTOM_SHEET_HEIGHT * 0.2;
-  const [isDraggingDown, setIsDraggingDown] = useState(false);
   const [isDraggingHeader, setIsDraggingHeader] = useState(false);
 
+  // Reset state when sheet is closed
+  useEffect(() => {
+    if (!visible) {
+      // Reset all states when closing
+      setIsOtpView(false);
+      setIsLoading(false);
+      setIsVerifyLoading(false);
+      setOtp(Array(6).fill(''));
+      setActiveIndex(0);
+      setIsPasscodeSetupVisible(false);
+    }
+  }, [visible]);
+
+  // Animation for showing/hiding the bottom sheet
   useEffect(() => {
     if (visible) {
-      // Reset the pan position
       pan.setValue(0);
       
-      // Animate the bottom sheet up
       Animated.parallel([
         Animated.spring(translateY, {
           toValue: 0,
@@ -149,14 +326,8 @@ const LoginBottomSheet: React.FC<LoginBottomSheetProps> = ({
           duration: 300,
           useNativeDriver: true,
         }),
-      ]).start(() => {
-        // Focus the username input after animation completes
-        setTimeout(() => {
-          usernameInputRef.current?.focus();
-        }, 100);
-      });
+      ]).start();
     } else {
-      // Animate the bottom sheet down
       Animated.parallel([
         Animated.spring(translateY, {
           toValue: BOTTOM_SHEET_HEIGHT,
@@ -172,7 +343,6 @@ const LoginBottomSheet: React.FC<LoginBottomSheetProps> = ({
           useNativeDriver: true,
         }),
       ]).start(() => {
-        // Reset pan value and form state after animation
         pan.setValue(0);
         setUsername('');
         setPassword('');
@@ -180,57 +350,14 @@ const LoginBottomSheet: React.FC<LoginBottomSheetProps> = ({
     }
   }, [visible, translateY, opacity, pan]);
 
-  // Add keyboard event monitoring
+  // Focus OTP input when entering OTP view
   useEffect(() => {
-    const keyboardWillShow = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (event: KeyboardEvent) => {
-        console.log('Keyboard showing:', {
-          keyboardHeight: event.endCoordinates.height,
-          screenHeight: SCREEN_HEIGHT,
-          bottomSheetHeight: BOTTOM_SHEET_HEIGHT,
-          platform: Platform.OS,
-          keyboardY: event.endCoordinates.screenY,
-        });
-      }
-    );
-
-    const keyboardWillHide = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => {
-        console.log('Keyboard hiding');
-      }
-    );
-
-    return () => {
-      keyboardWillShow.remove();
-      keyboardWillHide.remove();
-    };
-  }, []);
-
-  // Log layout measurements
-  const onBottomSheetLayout = (event: any) => {
-    const { height, y } = event.nativeEvent.layout;
-    console.log('BottomSheet Layout:', {
-      height,
-      y,
-      bottomSheetHeight: BOTTOM_SHEET_HEIGHT,
-      screenHeight: SCREEN_HEIGHT,
-    });
-  };
-
-  const onButtonSectionLayout = (event: any) => {
-    const { height, y } = event.nativeEvent.layout;
-    console.log('Button Section Layout:', {
-      height,
-      y,
-      bottomSheetHeight: BOTTOM_SHEET_HEIGHT,
-    });
-  };
-
-  const handleOverlayPress = () => {
-    onClose();
-  };
+    if (isOtpView && visible) {
+      setTimeout(() => {
+        inputRefs.current[0]?.focus();
+      }, 200);
+    }
+  }, [isOtpView, visible]);
 
   // Create a panResponder for the drag handle
   const headerPanResponder = PanResponder.create({
@@ -282,148 +409,322 @@ const LoginBottomSheet: React.FC<LoginBottomSheetProps> = ({
   const handleLogin = () => {
     if (username && password) {
       setIsLoading(true);
-      onLogin(username, password);
+      
+      // Simulate login API call
+      setTimeout(() => {
+        setIsLoading(false);
+        onLogin(username, password);
+        
+        requestAnimationFrame(() => {
+          setIsOtpView(true);
+        });
+      }, 1500);
     }
   };
 
-  // Add this useEffect to reset loading state when modal closes
-  useEffect(() => {
-    if (!visible) {
-      setIsLoading(false);
+  const handleVerify = () => {
+    if (otp.every(digit => digit !== '')) {
+      setIsVerifyLoading(true);
+      
+      // Simulate verification process
+      setTimeout(() => {
+        setIsVerifyLoading(false);
+        onVerify(otp.join(''));
+        
+        // First close the bottom sheet
+        Animated.parallel([
+          Animated.spring(translateY, {
+            toValue: BOTTOM_SHEET_HEIGHT,
+            useNativeDriver: true,
+            tension: 65,
+            friction: 12,
+            restSpeedThreshold: 0.5,
+            restDisplacementThreshold: 0.5,
+          }),
+          Animated.timing(opacity, {
+            toValue: 0,
+            duration: 250,
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          // After animations complete, close the bottom sheet and show passcode screen
+          onClose();
+          
+          // Wait for the animation to finish before showing passcode
+          setTimeout(() => {
+            setIsPasscodeSetupVisible(true);
+          }, 50);
+        });
+      }, 1500);
     }
-  }, [visible]);
+  };
+
+  const handleChangeText = (text: string, index: number) => {
+    // Sanitize input to only allow digits
+    const sanitizedText = text.replace(/[^0-9]/g, '');
+    
+    if (sanitizedText.length > 1) {
+      // Handle paste of the entire code
+      const pastedText = sanitizedText.slice(0, 6);
+      const newOtp = [...otp];
+      
+      for (let i = 0; i < pastedText.length; i++) {
+        if (i < 6) {
+          newOtp[i] = pastedText[i];
+        }
+      }
+      
+      setOtp(newOtp);
+      
+      // Stay on the last field after pasting
+      if (pastedText.length >= 6) {
+        setActiveIndex(5);
+        setTimeout(() => {
+          inputRefs.current[5]?.focus();
+        }, 10);
+      } else {
+        const nextIndex = Math.min(pastedText.length, 5);
+        setActiveIndex(nextIndex);
+        setTimeout(() => {
+          inputRefs.current[nextIndex]?.focus();
+        }, 50);
+      }
+    } else {
+      // Handle single character input
+      const newOtp = [...otp];
+      
+      // Always update the current field
+      newOtp[index] = sanitizedText;
+      setOtp(newOtp);
+      
+      if (sanitizedText !== '') {
+        if (index < 5) {
+          // Move to next input
+          setActiveIndex(index + 1);
+          setTimeout(() => {
+            inputRefs.current[index + 1]?.focus();
+          }, 10);
+        } else if (index === 5) {
+          // Last digit entered - keep focus on last field
+          setActiveIndex(5);
+        }
+      }
+    }
+  };
+
+  const handleKeyPress = (e: any, index: number) => {
+    if (e.nativeEvent.key === 'Backspace' && otp[index] === '' && index > 0) {
+      // Move to previous input when backspace is pressed on an empty input
+      setActiveIndex(index - 1);
+      inputRefs.current[index - 1]?.focus();
+      
+      // Clear previous input
+      const newOtp = [...otp];
+      newOtp[index - 1] = '';
+      setOtp(newOtp);
+    }
+  };
+
+  const handleResendCode = () => {
+    // Logic to resend code
+    console.log('Resending code to', username);
+  };
+
+  // Handle passcode setup completion
+  const handlePasscodeComplete = (passcode: string) => {
+    if (onPasscodeSet) {
+      onPasscodeSet(passcode);
+    }
+    setIsPasscodeSetupVisible(false);
+    onClose();
+  };
 
   const canLogin = username.length > 0 && password.length > 0;
+  const canVerify = otp.every(digit => digit !== '') && !isVerifyLoading;
 
-  const getInputWrapperStyle = (inputName: 'username' | 'password') => {
-    const isFocused = focusedInput === inputName;
-    return [
-      styles.inputWrapper,
-      isFocused && styles.inputWrapperFocused,
-    ];
+  // Button text based on view state
+  const getButtonText = () => isOtpView ? 'Verify' : 'Continue';
+
+  // Button action based on view state
+  const handleButtonPress = () => isOtpView ? handleVerify() : handleLogin();
+
+  // Button disabled state
+  const isButtonDisabled = isOtpView ? !canVerify : !canLogin || isLoading;
+
+  // Button style
+  const getButtonStyle = () => {
+    if (isOtpView) {
+      if (isVerifyLoading) {
+        return styles.continueButtonLoading;
+      }
+      return !canVerify ? styles.continueButtonDisabled : styles.continueButton;
+    } else {
+      if (isLoading) {
+        return styles.continueButtonLoading;
+      }
+      return !canLogin ? styles.continueButtonDisabled : styles.continueButton;
+    }
   };
 
   return (
-    <Modal transparent visible={visible} animationType="none">
-      <TouchableWithoutFeedback onPress={handleOverlayPress}>
-        <Animated.View style={[styles.overlay, { opacity }]} />
-      </TouchableWithoutFeedback>
-      
-      <Animated.View 
-        style={[
-          styles.bottomSheet,
-          { 
-            transform: [
-              { translateY: Animated.add(translateY, pan) }
-            ] 
-          }
-        ]}
-      >
-        {/* Drag handle */}
-        <View 
-          style={styles.dragBarContainer}
-          {...headerPanResponder.panHandlers}
+    <>
+      <Modal transparent visible={visible} animationType="none">
+        <TouchableWithoutFeedback onPress={onClose}>
+          <Animated.View style={[styles.overlay, { opacity }]} />
+        </TouchableWithoutFeedback>
+        
+        <Animated.View 
+          style={[
+            styles.bottomSheet,
+            { 
+              transform: [
+                { translateY: Animated.add(translateY, pan) }
+              ] 
+            }
+          ]}
         >
-          <View style={styles.dragBar} />
-        </View>
+          {/* Drag handle */}
+          <View 
+            style={styles.dragBarContainer}
+            {...headerPanResponder.panHandlers}
+          >
+            <View style={styles.dragBar} />
+          </View>
 
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardAvoidingView}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 60}
-        >
-          <View style={styles.content}>
-            <View style={styles.header}>
-              <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-                <Text style={styles.closeText}>Cancel</Text>
-              </TouchableOpacity>
-              <Text style={styles.title}>Login</Text>
-              <View style={styles.placeholder} />
-            </View>
-
-            <View style={styles.scrollContent}>
-              <View style={styles.inputContainer}>
-                {/* Username input */}
-                <View style={getInputWrapperStyle('username')}>
-                  <TextInput
-                    ref={usernameInputRef}
-                    style={styles.input}
-                    placeholder="Username"
-                    placeholderTextColor={UI_COLORS.TEXT.SECONDARY}
-                    value={username}
-                    onChangeText={setUsername}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardAppearance="dark"
-                    returnKeyType="next"
-                    onSubmitEditing={() => passwordInputRef.current?.focus()}
-                    blurOnSubmit={false}
-                    onFocus={() => setFocusedInput('username')}
-                    onBlur={() => setFocusedInput(null)}
-                    selectionColor={UI_COLORS.PRIMARY.DEFAULT}
-                    textAlignVertical="center"
-                  />
-                </View>
-
-                {/* Password input */}
-                <View style={getInputWrapperStyle('password')}>
-                  <TextInput
-                    ref={passwordInputRef}
-                    style={styles.input}
-                    placeholder="Password"
-                    placeholderTextColor={UI_COLORS.TEXT.SECONDARY}
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!isPasswordVisible}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardAppearance="dark"
-                    returnKeyType="go"
-                    onSubmitEditing={() => {
-                      if (username && password) {
-                        handleLogin();
-                      }
-                    }}
-                    onFocus={() => setFocusedInput('password')}
-                    onBlur={() => setFocusedInput(null)}
-                    selectionColor={UI_COLORS.PRIMARY.DEFAULT}
-                    textAlignVertical="center"
-                  />
-                  <TouchableOpacity 
-                    style={styles.visibilityButton}
-                    onPress={() => setIsPasswordVisible(!isPasswordVisible)}
-                  >
-                    <EyeIcon color={UI_COLORS.TEXT.SECONDARY} isVisible={isPasswordVisible} />
-                  </TouchableOpacity>
-                </View>
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoidingView}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 80}
+          >
+            <View style={styles.content}>
+              <View style={styles.header}>
+                <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+                  <Text style={styles.closeText}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={styles.title}>Login</Text>
+                <View style={styles.placeholder} />
               </View>
-            </View>
 
-            {/* Button Section */}
-            <View style={styles.buttonSection}>
-              <TouchableOpacity 
-                style={[
-                  styles.continueButton,
-                  !canLogin && styles.continueButtonDisabled,
-                  isLoading && styles.continueButtonLoading
-                ]} 
-                onPress={handleLogin}
-                disabled={!canLogin || isLoading}
-              >
-                {isLoading ? (
-                  <View style={styles.buttonContentContainer}>
-                    <LoadingIndicator size={20} />
-                    <Text style={styles.continueButtonTextLoading}>Continue</Text>
+              <View style={styles.scrollContent}>
+                {isOtpView ? (
+                  // OTP Verification View
+                  <View style={styles.otpContent}>
+                    <View style={styles.otpTitleContainer}>
+                      <Text style={styles.verifyTitle}>Verify your email</Text>
+                      <Text style={styles.verifySubtitle}>
+                        Enter the code sent to user@example.com
+                      </Text>
+                    </View>
+
+                    <View style={styles.otpContainer}>
+                      {otp.map((digit, index) => (
+                        <View key={index} style={styles.otpInputWrapper}>
+                          <TextInput
+                            ref={(ref: TextInput | null) => {
+                              inputRefs.current[index] = ref;
+                            }}
+                            style={[
+                              styles.otpInput,
+                              activeIndex === index && styles.otpInputActive
+                            ]}
+                            value={digit}
+                            onChangeText={(text) => handleChangeText(text, index)}
+                            onKeyPress={(e) => handleKeyPress(e, index)}
+                            keyboardType="number-pad"
+                            maxLength={1}
+                            autoFocus={index === 0 && isOtpView}
+                            selectionColor={UI_COLORS.PRIMARY.DEFAULT}
+                          />
+                        </View>
+                      ))}
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.resendButton}
+                      onPress={handleResendCode}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.resendText}>Resend code</Text>
+                    </TouchableOpacity>
                   </View>
                 ) : (
-                  <Text style={styles.continueButtonText}>Continue</Text>
+                  // COMPLETELY NEW LOGIN VIEW
+                  <View style={styles.loginContent}>
+                    <View style={styles.inputContainer}>
+                      {/* Username input with fresh implementation */}
+                      <FreshTextInput
+                        label="Username"
+                        value={username}
+                        onChangeText={setUsername}
+                        returnKeyType="next"
+                        autoFocus={true}
+                        onSubmit={() => {}} // Intentionally empty
+                        testID="fresh-username-input"
+                        autoComplete="username"
+                      />
+
+                      {/* Password input with fresh implementation */}
+                      <FreshTextInput
+                        label="Password"
+                        value={password}
+                        onChangeText={setPassword}
+                        secure={true}
+                        returnKeyType="go"
+                        onSubmit={() => {
+                          if (canLogin) {
+                            handleLogin();
+                          }
+                        }}
+                        onToggleVisibility={() => setShowPassword(!showPassword)}
+                        isVisible={showPassword}
+                        testID="fresh-password-input"
+                        autoComplete="password"
+                      />
+                    </View>
+                  </View>
                 )}
-              </TouchableOpacity>
+              </View>
+
+              {/* Button Section */}
+              <View style={styles.buttonSection}>
+                <TouchableOpacity 
+                  style={getButtonStyle()} 
+                  onPress={handleButtonPress}
+                  disabled={isButtonDisabled}
+                >
+                  {isOtpView ? (
+                    isVerifyLoading ? (
+                      <View style={styles.buttonContentContainer}>
+                        <LoadingIndicator size={20} />
+                        <Text style={styles.continueButtonTextLoading}>Verifying</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.continueButtonText}>{getButtonText()}</Text>
+                    )
+                  ) : (
+                    isLoading ? (
+                      <View style={styles.buttonContentContainer}>
+                        <LoadingIndicator size={20} />
+                        <Text style={styles.continueButtonTextLoading}>{getButtonText()}</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.continueButtonText}>{getButtonText()}</Text>
+                    )
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Animated.View>
-    </Modal>
+          </KeyboardAvoidingView>
+        </Animated.View>
+      </Modal>
+      
+      {/* Passcode Setup Screen */}
+      <PasscodeSetupScreen
+        visible={isPasscodeSetupVisible}
+        onClose={() => setIsPasscodeSetupVisible(false)}
+        onComplete={handlePasscodeComplete}
+      />
+    </>
   );
 };
 
@@ -461,6 +762,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     flex: 1,
     paddingHorizontal: 16,
+    paddingTop: 16,
   },
   dragBarContainer: {
     width: '100%',
@@ -481,8 +783,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 16,
     paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(70, 78, 97, 0.35)',
   },
   closeButton: {
     width: 100,
@@ -501,34 +801,17 @@ const styles = StyleSheet.create({
   placeholder: {
     width: 100,
   },
+  loginContent: {
+    flex: 1,
+  },
+  otpContent: {
+    flex: 1,
+    alignItems: 'center',
+    paddingTop: 24,
+  },
   inputContainer: {
     marginTop: 32,
     gap: 24,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(70, 78, 97, 0.35)',
-    borderRadius: 12,
-    backgroundColor: 'transparent',
-    height: 56,
-  },
-  inputWrapperFocused: {
-    borderColor: UI_COLORS.PRIMARY.DEFAULT,
-    backgroundColor: 'transparent',
-  },
-  input: {
-    flex: 1,
-    height: 56,
-    paddingHorizontal: 16,
-    color: UI_COLORS.TEXT.PRIMARY,
-    ...applyTypography(UI_TYPOGRAPHY.BODY_LARGE),
-    textAlignVertical: 'center',
-    padding: 0,
-  },
-  visibilityButton: {
-    padding: 16,
   },
   buttonSection: {
     paddingHorizontal: 16,
@@ -536,25 +819,33 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     backgroundColor: UI_COLORS.BACKGROUND.CARD,
   },
-  buttonContentContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
   continueButton: {
     backgroundColor: UI_COLORS.PRIMARY.DEFAULT,
+    height: 56,
     borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingVertical: 16,
     paddingHorizontal: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   continueButtonDisabled: {
+    backgroundColor: UI_COLORS.PRIMARY.DEFAULT,
+    height: 56,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
     opacity: 0.5,
   },
   continueButtonLoading: {
     backgroundColor: 'rgba(70, 78, 97, 0.35)',
+    height: 56,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
   },
   continueButtonText: {
     ...applyTypography(UI_TYPOGRAPHY.BUTTON_LARGE, {
@@ -564,6 +855,65 @@ const styles = StyleSheet.create({
   continueButtonTextLoading: {
     ...applyTypography(UI_TYPOGRAPHY.BUTTON_LARGE, {
       color: '#FFFFFF',
+    }),
+    marginLeft: 8,
+  },
+  buttonContentContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  otpTitleContainer: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  verifyTitle: {
+    ...applyTypography(UI_TYPOGRAPHY.SECTION_TITLE, {
+      color: UI_COLORS.TEXT.PRIMARY,
+    }),
+    fontSize: 18,
+    lineHeight: 24,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  verifySubtitle: {
+    ...applyTypography(UI_TYPOGRAPHY.BODY_MEDIUM, {
+      color: UI_COLORS.TEXT.SECONDARY,
+    }),
+    textAlign: 'center',
+  },
+  otpContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 32,
+  },
+  otpInputWrapper: {
+    width: 48,
+    height: 56,
+  },
+  otpInput: {
+    width: '100%',
+    height: '100%',
+    borderWidth: 1,
+    borderColor: '#717C98',
+    borderRadius: 12,
+    textAlign: 'center',
+    fontSize: 16,
+    fontFamily: 'Outfit-Regular',
+    color: UI_COLORS.TEXT.PRIMARY,
+  },
+  otpInputActive: {
+    borderColor: UI_COLORS.PRIMARY.DEFAULT,
+  },
+  resendButton: {
+    alignSelf: 'center',
+  },
+  resendText: {
+    ...applyTypography(UI_TYPOGRAPHY.BUTTON_SMALL, {
+      color: UI_COLORS.PRIMARY.DEFAULT,
     }),
   },
 });

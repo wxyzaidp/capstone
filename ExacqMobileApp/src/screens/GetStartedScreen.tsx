@@ -44,14 +44,19 @@ const GetStartedScreen: React.FC<GetStartedScreenProps> = ({
   const handleLogin = (username: string, password: string) => {
     // Handle login logic here
     console.log('Login attempt:', { username, password });
-    
-    // Simulate API call with a delay before proceeding
-    setTimeout(() => {
-      // Close the bottom sheet
-      setIsLoginVisible(false);
-      // Call the onGetStarted callback
-      onGetStarted();
-    }, 1500); // 1.5 second delay to show loading state
+  };
+
+  const handleVerify = (otp: string) => {
+    console.log('OTP Verified:', otp);
+    // Here you would typically make an API call to verify the OTP
+    // and handle the response accordingly
+  };
+
+  // Handle passcode setup
+  const handlePasscodeSet = (passcode: string) => {
+    console.log('Passcode set:', passcode);
+    // Here you would store the passcode securely and navigate to the app's main screens
+    onGetStarted(); // Navigate to the main app
   };
 
   return (
@@ -111,11 +116,13 @@ const GetStartedScreen: React.FC<GetStartedScreenProps> = ({
         </View>
       </View>
 
-      {/* Login Bottom Sheet */}
+      {/* LoginBottomSheet with OTP verification flow */}
       <LoginBottomSheet
         visible={isLoginVisible}
         onClose={() => setIsLoginVisible(false)}
         onLogin={handleLogin}
+        onVerify={handleVerify}
+        onPasscodeSet={handlePasscodeSet}
       />
     </View>
   );
