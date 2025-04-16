@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { View, StyleSheet, Text, ScrollView, Alert, Dimensions, TouchableOpacity, Image, PanResponder } from 'react-native';
+import { View, StyleSheet, Text, ScrollView, Alert, Dimensions, TouchableOpacity, Image, PanResponder, Platform } from 'react-native';
 import { UI_COLORS, UI_TYPOGRAPHY, applyTypography, PRIMITIVE } from '../design-system';
 import TopBar from '../components/TopBar';
 import SwipeUnlock from '../components/SwipeUnlock';
@@ -11,6 +11,7 @@ import LocationBottomSheet from '../components/LocationBottomSheet';
 import Svg, { Rect, Path } from 'react-native-svg';
 import { SvgXml } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
 
 // Define app-wide constants
 const APP_HORIZONTAL_MARGIN = 16;
@@ -75,7 +76,12 @@ interface HomeScreenProps {
   onNavigateToCreateInvite?: () => void;
 }
 
+// Define the navigation prop type
+type HomeScreenNavigationProp = any;
+
 const HomeScreen = ({ onNavigateToCreateInvite }: HomeScreenProps) => {
+  const navigation = useNavigation<HomeScreenNavigationProp>();
+  
   // State for the active card index for pagination
   const [activeCardIndex, setActiveCardIndex] = useState(0);
   // State for the active door card index for pagination
@@ -308,13 +314,17 @@ const HomeScreen = ({ onNavigateToCreateInvite }: HomeScreenProps) => {
   const handleCardPress = (cardId: string) => {
     // Find the selected card
     const selectedCard = userCards.find(card => card.id === cardId);
+    const cardIndex = userCards.findIndex(card => card.id === cardId);
     
-    // Show card details or navigate to card detail screen
-    Alert.alert(
-      `${selectedCard?.name}`,
-      `You selected the access card for ${selectedCard?.role}`,
-      [{ text: 'OK', onPress: () => console.log('Card selected:', cardId) }]
-    );
+    if (selectedCard) {
+      // Navigate to AccessCardScreen with card details
+      navigation.navigate('AccessCard', {
+        cardId: selectedCard.id,
+        name: selectedCard.name,
+        role: selectedCard.role,
+        cardIndex: cardIndex
+      });
+    }
   };
   
   // Sample data for visitors
@@ -455,11 +465,7 @@ const HomeScreen = ({ onNavigateToCreateInvite }: HomeScreenProps) => {
   // Handle invite button press - update to use the navigation prop
   const handleInvitePress = () => {
     console.log('Invite button pressed from HomeScreen');
-    if (onNavigateToCreateInvite) {
-      onNavigateToCreateInvite();
-    } else {
-      console.log('Navigation prop not provided');
-    }
+    navigation.navigate('CreateInvite');
   };
 
   // Log when component mounts for debugging
@@ -507,13 +513,14 @@ const HomeScreen = ({ onNavigateToCreateInvite }: HomeScreenProps) => {
               pagingEnabled={false}
             >
               {userCards.map((card, index) => (
-                <SimpleCard 
-                  key={card.id}
-                  name={card.name}
-                  role={card.role}
-                  index={index}
-                  onPress={() => handleCardPress(card.id)}
-                />
+                <View key={card.id} style={styles.cardWrapper}>
+                  <SimpleCard 
+                    name={card.name}
+                    role={card.role}
+                    index={index}
+                    onPress={() => handleCardPress(card.id)}
+                  />
+                </View>
               ))}
             </ScrollView>
             
@@ -620,7 +627,7 @@ const styles = StyleSheet.create({
   },
   cardsContainer: {
     paddingLeft: APP_HORIZONTAL_MARGIN,
-    paddingRight: APP_HORIZONTAL_MARGIN - CARD_SPACING, // Adjust right padding to account for card spacing
+    paddingRight: APP_HORIZONTAL_MARGIN,
   },
   cardWrapper: {
     marginRight: CARD_SPACING,

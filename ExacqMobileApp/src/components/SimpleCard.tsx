@@ -29,7 +29,7 @@ const backgroundImages = [
   require('../assets/Card_background.png'),
   require('../assets/Cards_2_bg.png'),
   require('../assets/Cards_3_bg.png'),
-  require('../assets/Cards_1_bg.png'),
+  require('../assets/Cards_4_bg.png'),
 ];
 
 // Create a shuffled array of indices (0-3) that will be used to assign
@@ -161,7 +161,8 @@ export default function SimpleCard({ onPress, name = "Jacob B", role = "Security
 
 const styles = StyleSheet.create({
   touchable: {
-    marginRight: CARD_SPACING, // Exact gap between cards from Figma
+    // Remove marginRight intended for horizontal scrollviews
+    // marginRight: CARD_SPACING, 
   },
   card: {
     width: CARD_WIDTH,

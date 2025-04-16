@@ -42,6 +42,7 @@ const EnableFaceIDScreen: React.FC<EnableFaceIDScreenProps> = ({
   const [biometricSupported, setBiometricSupported] = useState<boolean>(false);
   const [biometricType, setBiometricType] = useState<string>('Biometric');
   const [isTransitioning, setIsTransitioning] = useState<boolean>(false);
+  const [showPermissionModal, setShowPermissionModal] = useState<boolean>(false);
 
   useEffect(() => {
     // Check if biometric authentication is available on this device
@@ -87,16 +88,6 @@ const EnableFaceIDScreen: React.FC<EnableFaceIDScreenProps> = ({
     if (isTransitioning) return;
     setIsTransitioning(true);
 
-    // In development mode with forced enable, skip the authentication
-    if (__DEV__ && FORCE_ENABLE_BIOMETRIC) {
-      console.log("[DEV MODE] Skipping actual biometric auth in development");
-      setTimeout(() => {
-        onEnable();
-        setIsTransitioning(false);
-      }, 100);
-      return;
-    }
-
     if (!biometricSupported) {
       Alert.alert(
         `${biometricType} Not Available`,
@@ -112,91 +103,18 @@ const EnableFaceIDScreen: React.FC<EnableFaceIDScreenProps> = ({
       return;
     }
 
-    try {
-      // Use a simplified call for iOS to trigger Face ID
-      if (Platform.OS === 'ios') {
-        const iosResult = await LocalAuthentication.authenticateAsync({
-          promptMessage: `Verify your ${biometricType}`,
-        });
-        
-        console.log("iOS authentication result:", JSON.stringify(iosResult));
-        
-        if (iosResult.success) {
-          // Delay to ensure proper completion of biometric authentication
-          setTimeout(() => {
-            onEnable();
-            setIsTransitioning(false);
-          }, 300);
-        } else {
-          // Handle errors or cancellation
-          setIsTransitioning(false);
-          
-          // Properly type cast the result to access error field
-          const failedResult = iosResult as { success: false, error?: string };
-          if (failedResult.error === 'user_cancel') {
-            return;
-          }
-          
-          Alert.alert(
-            'Authentication Failed',
-            'Please try again or use passcode instead.',
-            [
-              { text: 'Try Again', onPress: handleEnable },
-              { text: 'Skip', onPress: onSkip, style: 'cancel' }
-            ]
-          );
-        }
-        return;
-      }
-      
-      // For Android or generic case
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: `Verify your ${biometricType} to enable authentication`,
-        cancelLabel: 'Cancel',
-        disableDeviceFallback: false,
-        fallbackLabel: 'Use Passcode',
-      });
-      
-      console.log("Authentication result:", JSON.stringify(result));
-      
-      if (result.success) {
-        // Authentication successful, enable Face ID in the app
-        // Increased delay to ensure proper completion of biometric authentication
-        setTimeout(() => {
-          onEnable();
-          setIsTransitioning(false);
-        }, 300);
-      } else {
-        // Not transitioning anymore if authentication failed
-        setIsTransitioning(false);
-        
-        // Check if the user just canceled the process
-        const errorResult = result as { success: false, error?: string };
-        if (errorResult.error === 'user_cancel') {
-          console.log("User canceled authentication");
-          return;
-        }
-        
-        // Handle other errors
-        Alert.alert(
-          'Authentication Failed',
-          'Please try again or use passcode instead.',
-          [
-            { text: 'Try Again', onPress: handleEnable },
-            { text: 'Skip', onPress: onSkip, style: 'cancel' }
-          ]
-        );
-      }
-    } catch (error) {
-      console.log('Authentication error:', error);
-      setIsTransitioning(false);
-      
-      // Just proceed with enabling - the user will still have to authenticate later
-      Alert.alert(
-        'Note',
-        `${biometricType} will be used for future logins.`,
-        [{ text: 'OK', onPress: onEnable }]
-      );
+    // Show the permission modal instead of authenticating
+    setShowPermissionModal(true);
+    setIsTransitioning(false);
+  };
+
+  const handlePermissionResponse = (granted: boolean) => {
+    setShowPermissionModal(false);
+    
+    if (granted) {
+      onEnable();
+    } else {
+      onSkip();
     }
   };
 
@@ -250,6 +168,41 @@ const EnableFaceIDScreen: React.FC<EnableFaceIDScreenProps> = ({
           ]}>Maybe later</Text>
         </TouchableOpacity>
       </View>
+
+      {/* System-like permission modal */}
+      <Modal
+        visible={showPermissionModal}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.systemModal}>
+            <View style={styles.systemModalContent}>
+              <Text style={styles.systemModalTitle}>
+                Do you want to allow{'\n'}"Exacq" to use Face ID?
+              </Text>
+              <Text style={styles.systemModalSubtitle}>
+                Use Face ID instead of a{'\n'}password to access your{'\n'}account.
+              </Text>
+            </View>
+            <View style={styles.systemModalButtonsContainer}>
+              <TouchableOpacity 
+                style={styles.dontAllowButton} 
+                onPress={() => handlePermissionResponse(false)}
+              >
+                <Text style={styles.dontAllowText}>Don't Allow</Text>
+              </TouchableOpacity>
+              <View style={styles.buttonDivider} />
+              <TouchableOpacity 
+                style={styles.allowButton} 
+                onPress={() => handlePermissionResponse(true)}
+              >
+                <Text style={styles.allowText}>Allow</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 
@@ -350,6 +303,68 @@ const styles = StyleSheet.create({
   },
   disabledText: {
     opacity: 0.7,
+  },
+  // System modal styles - Dark mode
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  systemModal: {
+    width: 273,
+    backgroundColor: 'rgba(30, 30, 30, 0.75)',
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  systemModalContent: {
+    paddingTop: 20,
+    paddingBottom: 20,
+    paddingHorizontal: 16,
+  },
+  systemModalTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  systemModalSubtitle: {
+    fontSize: 13,
+    color: '#ffffff',
+    textAlign: 'center',
+    opacity: 0.9,
+  },
+  systemModalButtonsContainer: {
+    flexDirection: 'row',
+    borderTopWidth: 0.5,
+    borderTopColor: 'rgba(90, 90, 90, 0.75)',
+  },
+  dontAllowButton: {
+    flex: 1,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dontAllowText: {
+    color: '#0a84ff',
+    fontSize: 17,
+    fontWeight: '400',
+  },
+  buttonDivider: {
+    width: 0.5,
+    backgroundColor: 'rgba(90, 90, 90, 0.75)',
+  },
+  allowButton: {
+    flex: 1,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  allowText: {
+    color: '#0a84ff',
+    fontSize: 17,
+    fontWeight: '600',
   },
 });
 

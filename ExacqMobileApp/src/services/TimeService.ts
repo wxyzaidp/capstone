@@ -1,252 +1,76 @@
 /**
- * TimeService - Handles date and time operations with consistent timezone handling
+ * TimeService - Consolidated date and time handling for the application
  */
 
-// Format a date as MM/DD/YY
+// Constants from DateService
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// --- Core Formatting Functions ---
+
+// Format a date as MM/DD/YY (from original TimeService)
 export function formatShortDate(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const year = date.getFullYear().toString().slice(-2);
+  if (!isValidDate(date)) return 'Invalid Date';
+  const month = String(date!.getMonth() + 1).padStart(2, '0');
+  const day = String(date!.getDate()).padStart(2, '0');
+  const year = date!.getFullYear().toString().slice(-2);
   return `${month}/${day}/${year}`;
 }
 
-// Format time as h:mm AM/PM with correct timezone handling
-export function formatTime(date: Date): string {
-  let hours = date.getHours();
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  hours = hours % 12;
-  hours = hours ? hours : 12; // Convert 0 to 12
-  return `${hours}:${minutes} ${ampm}`;
-}
-
-// Create a date with a specific time (hours, minutes) in the local timezone
-export function createLocalDate(hours: number, minutes: number): Date {
-  const date = new Date();
-  date.setHours(hours, minutes, 0, 0);
-  return date;
-}
-
-// Get current local date with time set to the beginning of the day
-export function getCurrentDateStart(): Date {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
-// Add hours to a date and preserve the timezone
-export function addHours(date: Date, hours: number): Date {
-  const newDate = new Date(date);
-  newDate.setHours(newDate.getHours() + hours);
-  return newDate;
-}
-
-// Convert an ISO string or formatted date string to a local Date object
-export function fromISOString(dateString: string): Date {
+// Format a date as Mon DD, YYYY (from DateService, renamed)
+export function formatMediumDate(date: Date | null): string {
+  if (!isValidDate(date)) return 'Add Date'; // Keep original placeholder
   try {
-    console.log(`[TimeService] Attempting to parse: "${dateString}"`);
-    
-    // First, check for all-day indicators
-    const isAllDayStart = dateString.includes('12:00 AM');
-    const isAllDayEnd = dateString.includes('11:59 PM');
-    
-    if (isAllDayStart || isAllDayEnd) {
-      console.log(`[TimeService] Detected all-day format ${isAllDayStart ? 'start' : 'end'}`);
-    }
-    
-    // First, try direct parsing (works for ISO strings)
-    const directParsed = new Date(dateString);
-    if (!isNaN(directParsed.getTime())) {
-      console.log(`[TimeService] Successfully parsed via direct method: ${directParsed.toISOString()}`);
-      
-      // If it's an all-day event, adjust the time appropriately
-      if (isAllDayStart) {
-        directParsed.setHours(0, 0, 0, 0);
-        console.log(`[TimeService] Adjusted to start of day: ${directParsed.toISOString()}`);
-      } else if (isAllDayEnd) {
-        directParsed.setHours(23, 59, 59, 999);
-        console.log(`[TimeService] Adjusted to end of day: ${directParsed.toISOString()}`);
-      }
-      
-      return directParsed;
-    }
-    
-    console.log(`[TimeService] Direct parsing failed, trying pattern matching...`);
-    
-    // Try a more flexible regex that handles common variations and typos
-    // This fixes the "Satruday" typo by making the day name portion more flexible
-    // Old pattern: /(\w+),\s+(\w{3})\s+(\d{1,2})\s+(\d{4}),\s+(\d{1,2}):(\d{2})([AP]M)/i
-    // New pattern with more flexibility:
-    const longFormatRegex = /(\w+)?,?\s*(\w{3,9})\s*(\d{1,2})\s*,?\s*(\d{4})\s*,?\s*(\d{1,2}):(\d{2})\s*([AP]\.?M\.?)/i;
-    
-    console.log(`[TimeService] Using regex pattern: ${longFormatRegex}`);
-    const match = dateString.match(longFormatRegex);
-    
-    if (match) {
-      console.log(`[TimeService] Regex matched: ${JSON.stringify(match)}`);
-      
-      // Extract components
-      const [_, dayName, monthName, day, year, hours, minutes, ampm] = match;
-      
-      console.log(`[TimeService] Extracted components:`);
-      console.log(`- Day name: "${dayName}"`);
-      console.log(`- Month name: "${monthName}"`);
-      console.log(`- Day: ${day}`);
-      console.log(`- Year: ${year}`);
-      console.log(`- Hours: ${hours}`);
-      console.log(`- Minutes: ${minutes}`);
-      console.log(`- AM/PM: "${ampm}"`);
-      
-      // Parse month (0-11)
-      const month = parseMonth(monthName);
-      console.log(`[TimeService] Parsed month "${monthName}" to index: ${month}`);
-      
-      // Parse hours (in 24-hour format)
-      let hour = parseInt(hours);
-      if (ampm.toUpperCase().includes('P') && hour < 12) {
-        hour += 12;
-      } else if (ampm.toUpperCase().includes('A') && hour === 12) {
-        hour = 0;
-      }
-      
-      console.log(`[TimeService] Adjusted hour to 24h format: ${hour}`);
-      
-      // Create date
-      const date = new Date(
-        parseInt(year),
-        month,
-        parseInt(day),
-        hour,
-        parseInt(minutes),
-        0
-      );
-      
-      console.log(`[TimeService] Created date: ${date.toString()}`);
-      console.log(`[TimeService] ISO string: ${date.toISOString()}`);
-      console.log(`[TimeService] Is valid date: ${!isNaN(date.getTime())}`);
-      
-      // If the time suggests an all-day event, adjust accordingly
-      if (hour === 0 && parseInt(minutes) === 0 && ampm.toUpperCase().includes('A')) {
-        console.log(`[TimeService] Detected all-day start time (12:00 AM), setting to start of day`);
-        date.setHours(0, 0, 0, 0);
-      } else if (hour === 23 && parseInt(minutes) === 59) {
-        console.log(`[TimeService] Detected all-day end time (11:59 PM), setting to end of day`);
-        date.setHours(23, 59, 59, 999);
-      }
-      
-      return date;
-    }
-    
-    // Try an even more lenient approach
-    console.log(`[TimeService] Regex pattern didn't match, checking for specific all-day patterns`);
-    
-    // Look for "all day" text pattern, which may be separated from the date part
-    if (dateString.toLowerCase().includes('all day')) {
-      console.log(`[TimeService] Found "all day" text pattern`);
-      
-      // Extract just the date part and try to parse it
-      const datePart = dateString.split(',').slice(0, -1).join(',');
-      console.log(`[TimeService] Extracted date part: "${datePart}"`);
-      
-      // Try to parse just the date part
-      const datePartParsed = new Date(datePart);
-      if (!isNaN(datePartParsed.getTime())) {
-        console.log(`[TimeService] Successfully parsed date part: ${datePartParsed.toISOString()}`);
-        
-        // Assume this is a start date for all-day events
-        datePartParsed.setHours(0, 0, 0, 0);
-        return datePartParsed;
-      }
-    }
-    
-    // Try analyzing components
-    console.log(`[TimeService] Analyzing date string components:`);
-    
-    // Split by common separators to analyze parts
-    const parts = dateString.split(/[\s,.:;-]+/);
-    console.log(`[TimeService] Date string parts: ${JSON.stringify(parts)}`);
-    
-    // Look for month names in the parts
-    let potentialMonthIndex = -1;
-    parts.forEach((part, index) => {
-      if (part.length >= 3) {
-        const monthValue = parseMonth(part);
-        if (monthValue !== undefined && monthValue >= 0 && monthValue <= 11) {
-          console.log(`[TimeService] Found potential month "${part}" at index ${index}, value: ${monthValue}`);
-          potentialMonthIndex = index;
-        }
-      }
-    });
-    
-    // Look for AM/PM indicators
-    const hasAMPM = parts.some(part => 
-      part.toUpperCase().includes('AM') || 
-      part.toUpperCase().includes('PM')
-    );
-    console.log(`[TimeService] Contains AM/PM indicator: ${hasAMPM}`);
-    
-    // Look for 4-digit years
-    const yearPart = parts.find(part => /^\d{4}$/.test(part));
-    console.log(`[TimeService] Potential year part: ${yearPart}`);
-    
-    // Log detailed information for debugging
-    console.warn(`[TimeService] Could not parse date string: "${dateString}"`);
-    
-    // Fall back to current date
-    return new Date();
+    return `${MONTHS_SHORT[date!.getMonth()]} ${date!.getDate()}, ${date!.getFullYear()}`;
   } catch (error) {
-    console.error('[TimeService] Error parsing date:', error);
-    return new Date();
+    console.error('TimeService: Error formatting medium date:', error);
+    return 'Add Date';
   }
 }
 
-// Determine if a date represents an all-day event start or end
-export function isAllDayEvent(startDate: Date, endDate: Date): boolean {
-  // Check if start is at beginning of day (00:00:00) and end is at end of day (23:59:59)
-  const isStartAllDay = startDate.getHours() === 0 && 
-                        startDate.getMinutes() === 0 && 
-                        startDate.getSeconds() === 0;
-                      
-  const isEndAllDay = endDate.getHours() === 23 && 
-                      endDate.getMinutes() === 59 && 
-                      (endDate.getSeconds() === 59 || endDate.getSeconds() === 0);
-  
-  console.log(`[TimeService] Checking if all-day event: ${isStartAllDay && isEndAllDay}`);
-  console.log(`- Start: ${startDate.toString()} (${isStartAllDay ? 'all-day start' : 'specific time'})`);
-  console.log(`- End: ${endDate.toString()} (${isEndAllDay ? 'all-day end' : 'specific time'})`);
-  
-  return isStartAllDay && isEndAllDay;
+// Format a date as Weekday, Mon DD, YYYY (from DateService)
+export function formatLongDate(date: Date | null): string {
+  if (!isValidDate(date)) {
+    console.error('TimeService: Invalid date in formatLongDate:', date);
+    return '';
+  }
+  try {
+    const dayName = DAYS[date!.getDay()];
+    const monthName = MONTHS_SHORT[date!.getMonth()];
+    const dayNumber = date!.getDate();
+    const year = date!.getFullYear();
+    return `${dayName}, ${monthName} ${dayNumber}, ${year}`;
+  } catch (error) {
+    console.error('TimeService: Error in formatLongDate:', error);
+    return '';
+  }
 }
 
-// Create all-day event times (beginning of start day to end of end day)
-export function createAllDayEventTimes(startDate: Date, endDate?: Date): {
-  startDate: Date;
-  endDate: Date;
-} {
-  console.log(`[TimeService] Creating all-day event times`);
-  
-  // Clone to avoid modifying original
-  const start = new Date(startDate);
-  // Set to beginning of day
-  start.setHours(0, 0, 0, 0);
-  
-  // If no end date provided, use same day as start
-  const end = endDate ? new Date(endDate) : new Date(start);
-  // Set to end of day
-  end.setHours(23, 59, 59, 999);
-  
-  console.log(`[TimeService] All-day event times:`);
-  console.log(`- Start: ${start.toString()}`);
-  console.log(`- End: ${end.toString()}`);
-  
-  return { startDate: start, endDate: end };
+// Format time as h:mm AM/PM (from original TimeService - seems equivalent to DateService.formatLocalTime)
+export function formatTime(date: Date | null): string {
+  if (!isValidDate(date)) return 'Add Time';
+  try {
+      let hours = date!.getHours();
+      const minutes = String(date!.getMinutes()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12; // Convert 0 to 12
+      return `${hours}:${minutes} ${ampm}`;
+  } catch (error) {
+      console.error('TimeService: Error formatting time:', error);
+      return 'Add Time';
+  }
 }
 
-// Format a date range as a string with all-day handling
+// Format a date range as a string with all-day handling (from original TimeService)
 export function formatDateTimeRange(startDate: Date, endDate: Date): {
   date: string;
   timeRange: string;
 } {
+  if (!isValidDate(startDate) || !isValidDate(endDate)) {
+      return { date: 'Invalid Date', timeRange: 'Invalid Time' };
+  }
+
   // Check if this is an all-day event
   const isAllDay = isAllDayEvent(startDate, endDate);
   
@@ -259,7 +83,7 @@ export function formatDateTimeRange(startDate: Date, endDate: Date): {
   if (isAllDay) {
     if (isSameDay) {
       return {
-        date: formatShortDate(startDate),
+        date: formatShortDate(startDate), // Use MM/DD/YY for consistency here
         timeRange: 'All Day'
       };
     } else {
@@ -286,7 +110,111 @@ export function formatDateTimeRange(startDate: Date, endDate: Date): {
   }
 }
 
-// Create an object with standard time options for invites
+// --- Parsing Functions ---
+
+// Parse a time string (h:mm AM/PM) into a Date object (from DateService)
+// Sets the date part to today, only time is relevant.
+export const parseTimeString = (timeStr: string | null): Date | null => {
+  if (!timeStr) return null;
+  
+  try {
+    const match = timeStr.match(/(\d{1,2}):(\d{2})\s*([AP]M)/i);
+    if (!match) return null;
+    
+    let [_, hours, minutes, ampm] = match;
+    let hour = parseInt(hours);
+    const minute = parseInt(minutes);
+    
+    if (ampm.toUpperCase() === 'PM' && hour < 12) {
+      hour += 12;
+    } else if (ampm.toUpperCase() === 'AM' && hour === 12) {
+      hour = 0; // Midnight case
+    }
+    
+    const date = new Date(); // Use today's date
+    date.setHours(hour, minute, 0, 0);
+    return date;
+  } catch (error) {
+    console.error('TimeService: Error parsing time string:', error);
+    return null;
+  }
+};
+
+// --- Utility Functions ---
+
+// Checks if a date object is valid (from DateService)
+export const isValidDate = (date: Date | null): boolean => {
+  if (!date) return false;
+  return !isNaN(date.getTime());
+};
+
+// Create a date with a specific time (hours, minutes) in the local timezone (from original TimeService)
+export function createLocalDate(hours: number, minutes: number): Date {
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date;
+}
+
+// Get current local date with time set to the beginning of the day (from original TimeService)
+export function getCurrentDateStart(): Date {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+// Add hours to a date and preserve the timezone (from original TimeService)
+export function addHours(date: Date, hours: number): Date {
+  const newDate = new Date(date);
+  newDate.setHours(newDate.getHours() + hours);
+  return newDate;
+}
+
+// Determine if a date range represents an all-day event (from original TimeService)
+export function isAllDayEvent(startDate: Date, endDate: Date): boolean {
+  if (!isValidDate(startDate) || !isValidDate(endDate)) return false;
+  // Check if start is at beginning of day (00:00:00) and end is at end of day (23:59:59)
+  const isStartAllDay = startDate.getHours() === 0 && 
+                        startDate.getMinutes() === 0 && 
+                        startDate.getSeconds() === 0;
+                      
+  const isEndAllDay = endDate.getHours() === 23 && 
+                      endDate.getMinutes() === 59 && 
+                      (endDate.getSeconds() === 59 || endDate.getSeconds() === 0); // Allow for 59 or 0 seconds
+  
+  console.log(`[TimeService] Checking if all-day event: ${isStartAllDay && isEndAllDay}`);
+  console.log(`- Start: ${startDate.toString()} (${isStartAllDay ? 'all-day start' : 'specific time'})`);
+  console.log(`- End: ${endDate.toString()} (${isEndAllDay ? 'all-day end' : 'specific time'})`);
+  
+  return isStartAllDay && isEndAllDay;
+}
+
+// Create all-day event times (beginning of start day to end of end day) (from original TimeService)
+export function createAllDayEventTimes(startDate: Date, endDate?: Date): {
+  startDate: Date;
+  endDate: Date;
+} {
+  console.log(`[TimeService] Creating all-day event times`);
+  if (!isValidDate(startDate)) {
+      startDate = new Date(); // Fallback
+  }
+  
+  // Clone to avoid modifying original
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0); // Set to beginning of day
+  
+  // If no end date provided, use same day as start
+  const endInputDate = (endDate && isValidDate(endDate)) ? endDate : start;
+  const end = new Date(endInputDate);
+  end.setHours(23, 59, 59, 999); // Set to end of day
+  
+  console.log(`[TimeService] All-day event times:`);
+  console.log(`- Start: ${start.toString()}`);
+  console.log(`- End: ${end.toString()}`);
+  
+  return { startDate: start, endDate: end };
+}
+
+// Create an object with standard time options for invites (from original TimeService)
 export function getStandardTimeOptions(): string[] {
   return [
     '8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM',
@@ -294,7 +222,7 @@ export function getStandardTimeOptions(): string[] {
   ];
 }
 
-// Create standard invitation time (e.g., 1-hour meeting)
+// Create standard invitation time (e.g., 1-hour meeting) (from original TimeService)
 export function createStandardInviteTimes(): {
   startDate: Date;
   endDate: Date;
@@ -316,66 +244,26 @@ export function createStandardInviteTimes(): {
   return { startDate, endDate };
 }
 
-// Parse a month name (full or abbreviated) to its numeric value (0-11)
-function parseMonth(month: string): number {
-  if (!month) {
-    console.warn('[TimeService] parseMonth received empty month name');
-    return 0;
-  }
-  
-  console.log(`[TimeService] parseMonth called with: "${month}"`);
-  
-  // Standardize input by removing periods and lowercasing
-  const normalizedMonth = month.toLowerCase().replace(/\./g, '');
-  console.log(`[TimeService] Normalized month name: "${normalizedMonth}"`);
-  
-  const months = {
-    jan: 0, january: 0,
-    feb: 1, february: 1,
-    mar: 2, march: 2,
-    apr: 3, april: 3,
-    may: 4,
-    jun: 5, june: 5,
-    jul: 6, july: 6,
-    aug: 7, august: 7,
-    sep: 8, september: 8, sept: 8,
-    oct: 9, october: 9,
-    nov: 10, november: 10,
-    dec: 11, december: 11
-  };
-  
-  const monthIndex = months[normalizedMonth];
-  console.log(`[TimeService] Month index result: ${monthIndex !== undefined ? monthIndex : 'undefined'}`);
-  
-  // If exact match fails, try prefix matching
-  if (monthIndex === undefined) {
-    console.log('[TimeService] Exact match failed, trying prefix matching');
-    
-    // Try to match by prefix (first 3 chars)
-    const prefix = normalizedMonth.substring(0, 3);
-    console.log(`[TimeService] Trying prefix: "${prefix}"`);
-    
-    const prefixMatch = months[prefix];
-    console.log(`[TimeService] Prefix match result: ${prefixMatch !== undefined ? prefixMatch : 'undefined'}`);
-    
-    return prefixMatch !== undefined ? prefixMatch : 0;
-  }
-  
-  return monthIndex;
-}
+// --- Export consolidated service object ---
 
 const TimeService = {
-  formatShortDate,
-  formatTime,
+  // Formatting
+  formatShortDate, // MM/DD/YY
+  formatMediumDate, // Mon DD, YYYY
+  formatLongDate, // Weekday, Mon DD, YYYY
+  formatTime, // h:mm AM/PM
+  formatDateTimeRange,
+  // Parsing
+  parseTimeString,
+  // Utilities
+  isValidDate,
   createLocalDate,
   getCurrentDateStart,
   addHours,
-  fromISOString,
-  formatDateTimeRange,
+  isAllDayEvent,
+  createAllDayEventTimes,
   getStandardTimeOptions,
   createStandardInviteTimes,
-  isAllDayEvent,
-  createAllDayEventTimes
 };
 
 export default TimeService; 

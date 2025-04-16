@@ -4,12 +4,14 @@ import { UI_COLORS, UI_TYPOGRAPHY, applyTypography } from '../design-system';
 import MoreTopBar from '../components/MoreTopBar';
 import { Feather } from '@expo/vector-icons';
 import CustomToggle from '../components/ui/CustomToggle';
+import { useNavigation, NavigationProp, ParamListBase } from '@react-navigation/native';
 
 interface MoreScreenProps {
   onNavigateToHome?: () => void;
 }
 
 const MoreScreen: React.FC<MoreScreenProps> = ({ onNavigateToHome }) => {
+  const navigation = useNavigation<NavigationProp<ParamListBase>>();
   // Settings state
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [biometricEnabled, setBiometricEnabled] = useState(true);
@@ -25,9 +27,8 @@ const MoreScreen: React.FC<MoreScreenProps> = ({ onNavigateToHome }) => {
   };
 
   const handleBackPress = () => {
-    if (onNavigateToHome) {
-      onNavigateToHome();
-    }
+    console.log('Back pressed, navigating to Home tab');
+    navigation.navigate('Home');
   };
 
   // Menu sections with items

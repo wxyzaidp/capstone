@@ -10,6 +10,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
 import Constants from 'expo-constants';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Exact SVG Building Icon from the assets folder
 const BuildingIcon = ({ size = 24, color = '#6FDCFA' }) => {
@@ -62,8 +63,10 @@ const TopBar = ({
   onLocationPress, 
   onNotificationPress
 }: TopBarProps) => {
+  const insets = useSafeAreaInsets();
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
       <View style={styles.content}>
         <TouchableOpacity 
           style={styles.locationContainer}
@@ -105,7 +108,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: TOPBAR_COLOR,
-    padding: 12,
+    paddingBottom: 12,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(70, 78, 97, 0.35)', // stroke_Z3USFN

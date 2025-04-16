@@ -1,13 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, Image, TouchableOpacity, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Dimensions, Image, TouchableOpacity, Platform, Modal, Animated, TouchableWithoutFeedback, StatusBar, PanResponder } from 'react-native';
 import { UI_COLORS } from '../design-system/colors';
 import LoginBottomSheet from '../components/LoginBottomSheet';
 import AccessCardTopBar from '../components/AccessCardTopBar';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import AccessCard from '../components/AccessCard';
-import BottomSheet from '../components/BottomSheet';
+import { useNavigation, useRoute, RouteProp, ParamListBase, NavigationProp } from '@react-navigation/native';
+import SimpleCard from '../components/SimpleCard';
 import { SvgXml } from 'react-native-svg';
-import { Asset } from 'expo-asset';
 
 // Define the type for route params
 type AccessCardParams = {
@@ -20,33 +18,13 @@ type AccessCardParams = {
 // Define route type
 type AccessCardRouteProp = RouteProp<{ AccessCard: AccessCardParams }, 'AccessCard'>;
 
+// Define navigation type
+type AccessCardNavigationProp = NavigationProp<ParamListBase>;
+
 const { width, height } = Dimensions.get('window');
 
 // Use the exact same background color as defined in the Stack.Screen options
 const BACKGROUND_COLOR = '#131515';
-
-// GIF assets to preload
-const GIF_ASSETS = [
-  require('../assets/gifs/tap_animation.gif'),
-  require('../assets/gifs/twist_phone.gif'),
-];
-
-// Function to preload gif assets
-const preloadGifs = async () => {
-  try {
-    const cacheAssets = GIF_ASSETS.map(asset => {
-      if (Platform.OS === 'web') {
-        return Asset.fromURI(Image.resolveAssetSource(asset).uri).downloadAsync();
-      }
-      return Asset.fromModule(asset).downloadAsync();
-    });
-    
-    await Promise.all(cacheAssets);
-    console.log('All GIFs preloaded successfully');
-  } catch (error) {
-    console.error('Error preloading GIFs:', error);
-  }
-};
 
 // SVG for unselected checkbox
 const unselectedCheckboxSvg = `
@@ -68,9 +46,13 @@ const AccessCardScreen = () => {
   const [isLoginVisible, setIsLoginVisible] = useState(false);
   const [showGestureSheet, setShowGestureSheet] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
-  const [gifsLoaded, setGifsLoaded] = useState(false);
-  const navigation = useNavigation();
+  const navigation = useNavigation<AccessCardNavigationProp>();
   const route = useRoute<AccessCardRouteProp>();
+  
+  // Animation values for gesture bottom sheet
+  const [gestureSheetVisible, setGestureSheetVisible] = useState(false);
+  const panY = useRef(new Animated.Value(height)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
   
   // Get card details from route params
   const { cardId, name, role, cardIndex } = route.params || { 
@@ -79,29 +61,95 @@ const AccessCardScreen = () => {
     role: 'Guest',
     cardIndex: 0
   };
+  
+  // PanResponder Logic (adjust spring animation values)
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        // Only capture vertical swipes
+        return Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && gestureState.dy > 0;
+      },
+      onPanResponderGrant: () => {
+        // Use extractOffset to properly handle subsequent drags
+        panY.extractOffset();
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        // Follow the finger vertically, but don't allow dragging upwards past the initial position
+        panY.setValue(Math.max(0, gestureState.dy));
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        // Flatten the offset so the animation starts from the release point
+        panY.flattenOffset();
+        const threshold = 150; // Drag distance threshold to close
+        const velocityThreshold = 0.3; // Velocity threshold to close
 
-  // Preload GIFs when component mounts
+        if (
+          gestureState.dy > threshold ||
+          (gestureState.vy > velocityThreshold && gestureState.dy > 0) // Check for downward flick
+        ) {
+          // Close animation - Adjust spring values
+          Animated.spring(panY, {
+            toValue: height,
+            tension: 50, // Slightly lower tension
+            friction: 15, // Higher friction for smoother stop
+            useNativeDriver: true,
+          }).start(() => {
+            setGestureSheetVisible(false);
+            panY.setValue(height); 
+          });
+        } else {
+          // Snap back animation - Adjust spring values
+          Animated.spring(panY, {
+            toValue: 0,
+            tension: 50, // Slightly lower tension
+            friction: 15, // Higher friction for smoother stop
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  // Show gesture sheet automatically when screen loads
   useEffect(() => {
-    const loadAssets = async () => {
-      await preloadGifs();
-      setGifsLoaded(true);
-    };
+    // Short delay to ensure screen is fully loaded first
+    const timer = setTimeout(() => {
+      setGestureSheetVisible(true);
+    }, 500);
     
-    loadAssets();
+    // Clean up timer on unmount
+    return () => clearTimeout(timer);
   }, []);
-
-  // Show gesture sheet automatically when screen loads and GIFs are ready
+  
+  // Animate gesture bottom sheet opening and closing
   useEffect(() => {
-    if (gifsLoaded) {
-      // Short delay to ensure screen is fully loaded first
-      const timer = setTimeout(() => {
-        setShowGestureSheet(true);
-      }, 500);
-      
-      // Clean up timer on unmount
-      return () => clearTimeout(timer);
+    if (gestureSheetVisible) {
+      // Reset panY before opening animation
+      panY.setValue(0); 
+      Animated.parallel([
+        Animated.spring(panY, {
+          toValue: 0,
+          tension: 50, // Slightly lower tension
+          friction: 15, // Higher friction for smoother stop
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.85, // Target opacity for overlay
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      // Closing animation is handled by PanResponder or Understand button
+      // Ensure opacity fades out if closed without gesture (e.g., button press)
+       Animated.timing(opacity, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+       }).start();
     }
-  }, [gifsLoaded]);
+  }, [gestureSheetVisible]); // Removed panY, opacity from dependencies as they are refs
 
   const handleLogin = (username: string, password: string) => {
     // Handle login logic here
@@ -131,92 +179,153 @@ const AccessCardScreen = () => {
     setDontShowAgain(!dontShowAgain);
   };
 
-  // Handle understand button press
+  // Handle understand button press - trigger close animation
   const handleUnderstand = () => {
-    setShowGestureSheet(false);
-    // Save the preference if "Don't show again" is checked
-    if (dontShowAgain) {
-      // Save to AsyncStorage or similar
-      console.log('User opted to not show gesture guide again');
-    }
+     Animated.parallel([
+        Animated.spring(panY, { 
+            toValue: height,
+            tension: 50, // Slightly lower tension
+            friction: 15, // Higher friction for smoother stop
+            useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+            toValue: 0,
+            duration: 250,
+            useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setGestureSheetVisible(false);
+        panY.setValue(height); 
+        if (dontShowAgain) {
+          console.log('User opted to not show gesture guide again');
+        }
+      });
   };
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={BACKGROUND_COLOR} />
+      
       {/* Top Bar */}
       <AccessCardTopBar onBackPress={handleBackPress} />
       
       <View style={styles.contentContainer}>
-        {/* Display the access card from homepage - using default size */}
-        <View style={styles.cardContainer}>
-          <AccessCard
-            cardId={cardId}
+        {/* Re-add wrapper View specifically for centering the card */}
+        <View style={styles.centeringCardContainer}>
+          <SimpleCard
+            key={cardId}
             name={name}
             role={role}
             index={cardIndex}
-            onPress={() => {}} // No action when card is pressed
-            isInteractive={false} // Disable interaction
+            onPress={() => {}}
           />
         </View>
         
         {/* Tap Animation GIF */}
         <View style={styles.animationContainer}>
           <Image 
-            source={require('../assets/gifs/tap_animation.gif')}
+            source={require('../../assets/Tap_animation.gif')}
             style={styles.gifAnimation}
             resizeMode="contain"
           />
           <Text style={styles.readerText}>HOLD NEAR READER</Text>
         </View>
+        
+        {/* Login Button removed */}
       </View>
       
-      {/* Gesture Unlock Bottom Sheet */}
-      <BottomSheet
-        visible={showGestureSheet}
-        onClose={() => setShowGestureSheet(false)}
-        title="Unlock with a Twist"
-        height={510}
+      {/* Custom Gesture Unlock Bottom Sheet */}
+      <Modal
+        transparent
+        visible={gestureSheetVisible}
+        animationType="none"
+        onRequestClose={() => { 
+          // Trigger close animation on hardware back button press
+          Animated.spring(panY, {
+            toValue: height,
+            tension: 50, // Slightly lower tension
+            friction: 15, // Higher friction for smoother stop
+            useNativeDriver: true,
+          }).start(() => setGestureSheetVisible(false));
+        }}
       >
-        <View style={styles.gestureSheetContent}>
-          {/* Twist phone animation */}
-          <View style={styles.twistAnimationContainer}>
-            <Image 
-              source={require('../assets/gifs/twist_phone.gif')}
-              style={styles.twistAnimation}
-              resizeMode="contain"
-            />
+        {/* Overlay - Separate Touchable for closing on background tap */}
+        <TouchableWithoutFeedback onPress={() => { 
+          // Trigger close animation on overlay press
+           Animated.spring(panY, {
+            toValue: height,
+            tension: 50, // Slightly lower tension
+            friction: 15, // Higher friction for smoother stop
+            useNativeDriver: true,
+          }).start(() => setGestureSheetVisible(false));
+        }}>
+           {/* Apply animated opacity ONLY to the overlay */}
+          <Animated.View style={[styles.overlay, { opacity }]} />
+        </TouchableWithoutFeedback>
+
+        {/* Bottom Sheet - Sibling to Overlay */}
+        <Animated.View 
+          style={[
+            styles.bottomSheet, 
+            { transform: [{ translateY: panY }] } // Use panY for transform
+          ]}
+          {...panResponder.panHandlers} // Attach pan handlers
+        >
+          {/* Handle is part of the draggable sheet */}
+          <View style={styles.handleContainer} >
+              <View style={styles.handle} />
           </View>
           
-          {/* Information message */}
-          <View style={styles.infoContainer}>
-            <Text style={styles.infoText}>
-              Twist your phone near the reader to unlock instantly. No tapping needed.
-            </Text>
-          </View>
-          
-          {/* Don't show again checkbox */}
-          <View style={styles.checkboxContainer}>
-            <TouchableOpacity onPress={handleCheckboxToggle}>
-              <SvgXml 
-                xml={dontShowAgain ? selectedCheckboxSvg : unselectedCheckboxSvg} 
-                width={24} 
-                height={24} 
-              />
-            </TouchableOpacity>
-            <Text style={styles.checkboxLabel}>Don't show this tip again</Text>
-          </View>
-          
-          {/* I Understand button */}
-          <TouchableOpacity 
-            style={styles.understandButton}
-            onPress={handleUnderstand}
-          >
-            <Text style={styles.understandButtonText}>Got It</Text>
-          </TouchableOpacity>
-        </View>
-      </BottomSheet>
+          {/* Inner content wrapper - Prevents touches inside content from propagating to overlay touchable */}
+          <TouchableWithoutFeedback>
+            <View style={{flex: 1}}> 
+              <View style={styles.bottomSheetHeader}>
+                <Text style={styles.bottomSheetTitle}>Unlock with a Twist</Text>
+              </View>
+              
+              <View style={styles.gestureSheetContent}>
+                {/* Twist phone animation */}
+                <View style={styles.twistAnimationContainer}>
+                  <Image 
+                    source={require('../../assets/Twist_Phone.gif')}
+                    style={styles.twistAnimation}
+                    resizeMode="contain"
+                  />
+                </View>
+                
+                {/* Information message */}
+                <View style={styles.infoContainer}>
+                  <Text style={styles.infoText}>
+                    Twist your phone near the reader to unlock instantly. No tapping needed.
+                  </Text>
+                </View>
+                
+                {/* Don't show again checkbox */}
+                <View style={styles.checkboxContainer}>
+                  <TouchableOpacity onPress={handleCheckboxToggle}>
+                    <SvgXml 
+                      xml={dontShowAgain ? selectedCheckboxSvg : unselectedCheckboxSvg} 
+                      width={24} 
+                      height={24} 
+                    />
+                  </TouchableOpacity>
+                  <Text style={styles.checkboxLabel}>Don't show this tip again</Text>
+                </View>
+                
+                {/* I Understand button */}
+                <TouchableOpacity 
+                  style={styles.understandButton}
+                  onPress={handleUnderstand}
+                >
+                  <Text style={styles.understandButtonText}>Got It</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </Animated.View>
+      </Modal>
       
-      {/* LoginBottomSheet with OTP verification flow */}
+      {/* LoginBottomSheet - kept for future use but not displayed */}
       <LoginBottomSheet
         visible={isLoginVisible}
         onClose={() => setIsLoginVisible(false)}
@@ -235,16 +344,17 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     flex: 1,
-    alignItems: 'center',
     paddingTop: 20, // Exactly 20px away from the top bar
     justifyContent: 'flex-start', // Align content to the top
   },
-  cardContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  // Add back a container specifically for centering the card
+  centeringCardContainer: {
+    width: '100%', // Take full width to allow centering within it
+    alignItems: 'center', // Center the SimpleCard child
+    paddingHorizontal: 16, // Add padding to enforce side gaps
+    marginBottom: 40, // Add margin below the card container before the animation
   },
   animationContainer: {
-    marginTop: 40, // Changed back to 40px spacing below the card
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
@@ -261,6 +371,54 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: '#B6BDCD',
     marginTop: 16,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)', // Use standard semi-transparent overlay
+    zIndex: 1,
+  },
+  bottomSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 510,
+    backgroundColor: '#23262D',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    zIndex: 2,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.25, // Increased shadow opacity
+    shadowRadius: 16,
+    elevation: 24,
+  },
+  handleContainer: {
+    width: '100%',
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 16,
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#404759',
+    borderRadius: 6,
+  },
+  bottomSheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+  bottomSheetTitle: {
+    fontFamily: 'Outfit-Medium',
+    fontSize: 18,
+    color: '#FFFFFF',
+    textAlign: 'center',
   },
   gestureSheetContent: {
     width: '100%',

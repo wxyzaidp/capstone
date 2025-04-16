@@ -256,13 +256,14 @@ const LocationBottomSheet: React.FC<LocationBottomSheetProps> = ({
     });
   }, [pan, onClose, dismissThreshold, isDraggingDown]);
 
-  const renderLocationItem = (location: Location) => {
+  const renderLocationItem = (location: Location, index: number) => {
     const isSelected = location.id === selectedLocationId;
+    const isLastItem = index === locations.length - 1;
     
     return (
       <TouchableOpacity
         key={location.id}
-        style={styles.locationItem}
+        style={[styles.locationItem, isLastItem && styles.lastLocationItem]}
         onPress={() => onSelectLocation(location)}
       >
         <BuildingIcon size={24} color="#FFFFFF" />
@@ -350,7 +351,7 @@ const LocationBottomSheet: React.FC<LocationBottomSheetProps> = ({
           </View>
           
           <View style={styles.locationList}>
-            {locations.map(renderLocationItem)}
+            {locations.map((location, index) => renderLocationItem(location, index))}
           </View>
         </View>
       </Animated.View>
@@ -395,8 +396,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     paddingTop: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(70, 78, 97, 0.35)',
   },
   closeButton: {
     flexDirection: 'row',
@@ -436,6 +435,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(70, 78, 97, 0.35)',
+  },
+  lastLocationItem: {
+    borderBottomWidth: 0,
   },
   locationContent: {
     flex: 1,

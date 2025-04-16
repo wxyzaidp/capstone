@@ -9,7 +9,7 @@ import {
   ActivityIndicator, 
   Dimensions,
   Image,
-  Platform
+  Platform,
 } from 'react-native';
 import { UI_COLORS, UI_TYPOGRAPHY, applyTypography } from '../design-system';
 import AccessTopBar from '../components/AccessTopBar';
@@ -29,6 +29,7 @@ import DoorBottomSheet from '../components/DoorBottomSheet';
 import DoorTimerService, { DoorTimerEvents } from '../services/DoorTimerService';
 import SwipeUnlock from '../components/SwipeUnlock';
 import AudioService from '../utils/AudioService';
+import { useNavigation, NavigationProp, ParamListBase } from '@react-navigation/native';
 
 // Types
 type DoorStatus = 'Locked' | 'Unlocked' | 'Restricted' | 'Disabled';
@@ -160,6 +161,7 @@ interface AccessScreenProps {
 }
 
 const AccessScreen = ({ onNavigateToHome }: AccessScreenProps) => {
+  const navigation = useNavigation<NavigationProp<ParamListBase>>();
   const [searchText, setSearchText] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [doors, setDoors] = useState<DoorAccess[]>(doorData);
@@ -192,24 +194,21 @@ const AccessScreen = ({ onNavigateToHome }: AccessScreenProps) => {
   }, [selectedLocationId, locations]);
 
   // Filter doors based on search and categories
-  const favoritesDoors = doors.filter(door => door.isFavorite);
-  const inRangeDoors = doors.filter(door => !door.isFavorite);
+  const filteredDoors = doors.filter(door => 
+    door.name.toLowerCase().includes(searchText.toLowerCase())
+  );
+  const favoritesDoors = filteredDoors.filter(door => door.isFavorite);
+  const inRangeDoors = filteredDoors.filter(door => !door.isFavorite);
 
   // Sort by ID to maintain stable positions instead of sorting by lock status
   const sortedFavoritesDoors = [...favoritesDoors].sort((a, b) => {
     return parseInt(a.id) - parseInt(b.id); // Sort by ID for stable positions
   });
 
-  // Handle navigate to home
+  // Handle navigate to home (or selected tab)
   const handleBackPress = () => {
-    console.log('Navigating back to home');
-    if (onNavigateToHome) {
-      onNavigateToHome();
-    } else {
-      // If no prop provided, we could dispatch an event or use context
-      // For now, log that navigation would happen
-      console.log('Would navigate to home screen (onNavigateToHome not provided)');
-    }
+    console.log('Back pressed, navigating to Home tab');
+    navigation.navigate('Home'); // Navigate specifically to Home tab
   };
 
   // Function to handle search
@@ -243,33 +242,15 @@ const AccessScreen = ({ onNavigateToHome }: AccessScreenProps) => {
     console.log(`[DOOR] Door unlock initiated for door ID: ${doorId}`);
     
     // Use DoorTimerService to unlock the door
+    // State update will happen via DoorTimerService event listener
     DoorTimerService.unlockDoor(doorId);
     
-    // Delay the status change to allow the button to complete its animation
-    setTimeout(() => {
-      console.log(`[DOOR] Updating door ${doorId} status to Unlocked`);
-      setDoors(prevDoors => {
-        // Create a completely new array with new door objects to prevent any state sharing
-        const updatedDoors = prevDoors.map(door => {
-          // Create a completely new object for EVERY door, not just the changed one
-          // This ensures maximum isolation and forces React to treat all cards as new
-          if (door.id === doorId) {
-            console.log(`[DOOR] Creating new door object for ${door.id} (${door.name}), changing status from ${door.status} to Unlocked`);
-            return {
-              ...JSON.parse(JSON.stringify(door)), // Deep clone for total isolation
-              status: 'Unlocked' as DoorStatus
-            };
-          }
-          // Return a new deep copy even for unchanged doors to prevent reference sharing
-          return JSON.parse(JSON.stringify(door));
-        });
-        
-        console.log(`[DOOR] Door status update complete, doors updated: ${updatedDoors.filter(d => d.status === 'Unlocked').map(d => d.id).join(', ')}`);
-        return updatedDoors;
-      });
-      console.log(`[DOOR] Door status updated to Unlocked: ${doorId}`);
-    }, 300);
-  }, []);
+    // Play unlock sound immediately if desired
+    // AudioService.playUnlockSound().catch(error => {
+    //   console.error(`[DOOR] Error playing unlock sound: ${error}`);
+    // });
+    
+  }, []); // Keep empty dependency array for stability
   
   const handleDoorLock = useCallback((doorId: string) => {
     console.log(`[DOOR] Door lock initiated for door ID: ${doorId}`);
@@ -282,58 +263,61 @@ const AccessScreen = ({ onNavigateToHome }: AccessScreenProps) => {
     // Use DoorTimerService to lock the door
     DoorTimerService.lockDoor(doorId);
     
-    // Update local state
+    // Update local state - use standard immutable update
+    // State update will also happen via DoorTimerService event listener,
+    // but this provides immediate feedback if needed (optional).
+    // If relying solely on the service, this setDoors call can be removed.
     setDoors(prevDoors => {
-      const updatedDoors = prevDoors.map(door => {
-        if (door.id === doorId) {
-          console.log(`[DOOR] Creating new door object for ${door.id} (${door.name}), changing status from ${door.status} to Locked`);
-          return {
-            ...JSON.parse(JSON.stringify(door)), // Deep clone for total isolation
-            status: 'Locked' as DoorStatus
-          };
-        }
-        return JSON.parse(JSON.stringify(door)); // Deep clone all doors
-      });
-      
-      return updatedDoors;
+      console.log(`[DOOR] Optimistically setting door ${doorId} to Locked in local state`);
+      return prevDoors.map(door => 
+        door.id === doorId 
+          ? { ...door, status: 'Locked' as DoorStatus } 
+          : door // Return original object for unchanged doors
+      );
     });
-    console.log(`[DOOR] Door status updated to Locked: ${doorId}`);
-  }, []);
+    console.log(`[DOOR] Door status optimistically updated to Locked: ${doorId}`);
+  }, []); // Keep empty dependency array for stability
   
   // Subscribe to door events to keep UI in sync
   useEffect(() => {
     const doorUnlockedHandler = (data: { doorId: string }) => {
+      console.log(`[DOOR EVENT] Received DOOR_UNLOCKED for ${data.doorId}`);
       setDoors(prevDoors => {
-        const updatedDoors = prevDoors.map(door => {
-          if (door.id === data.doorId) {
-            return {
-              ...JSON.parse(JSON.stringify(door)),
-              status: 'Unlocked' as DoorStatus
-            };
-          }
-          return JSON.parse(JSON.stringify(door));
-        });
-        return updatedDoors;
+        // Check if the door is already marked as unlocked to prevent unnecessary updates/renders
+        const doorIndex = prevDoors.findIndex(d => d.id === data.doorId);
+        if (doorIndex === -1 || prevDoors[doorIndex].status === 'Unlocked') {
+          return prevDoors; // No change needed
+        }
+        
+        console.log(`[DOOR EVENT] Updating door ${data.doorId} status to Unlocked`);
+        return prevDoors.map(door => 
+          door.id === data.doorId 
+            ? { ...door, status: 'Unlocked' as DoorStatus } 
+            : door // Return original object for unchanged doors
+        );
       });
     };
     
     const doorLockedHandler = (data: { doorId: string }) => {
+      console.log(`[DOOR EVENT] Received DOOR_LOCKED for ${data.doorId}`);
       // Play lock sound when door is locked via timer or external event
       AudioService.playLockSound().catch(error => {
         console.error(`[DOOR EVENT] Error playing lock sound: ${error}`);
       });
       
       setDoors(prevDoors => {
-        const updatedDoors = prevDoors.map(door => {
-          if (door.id === data.doorId) {
-            return {
-              ...JSON.parse(JSON.stringify(door)),
-              status: 'Locked' as DoorStatus
-            };
-          }
-          return JSON.parse(JSON.stringify(door));
-        });
-        return updatedDoors;
+        // Check if the door is already marked as locked
+        const doorIndex = prevDoors.findIndex(d => d.id === data.doorId);
+        if (doorIndex === -1 || prevDoors[doorIndex].status === 'Locked') {
+          return prevDoors; // No change needed
+        }
+
+        console.log(`[DOOR EVENT] Updating door ${data.doorId} status to Locked`);
+        return prevDoors.map(door => 
+          door.id === data.doorId 
+            ? { ...door, status: 'Locked' as DoorStatus } 
+            : door // Return original object for unchanged doors
+        );
       });
     };
     
@@ -389,21 +373,22 @@ const AccessScreen = ({ onNavigateToHome }: AccessScreenProps) => {
   const handleDoorBottomSheetUnlock = useCallback(() => {
     if (selectedDoor) {
       console.log(`[DOOR] Door unlock from bottom sheet: ${selectedDoor.id} (${selectedDoor.name})`);
-      handleDoorUnlock(selectedDoor.id);
+      handleDoorUnlock(selectedDoor.id); // Call the stable handleDoorUnlock
     }
-  }, [selectedDoor, handleDoorUnlock]);
+  }, [selectedDoor, handleDoorUnlock]); // Keep handleDoorUnlock dependency
 
   const handleToggleDoorFavorite = (isFavorite: boolean) => {
     if (selectedDoor) {
       console.log(`[AccessScreen] handleToggleDoorFavorite called with value: ${isFavorite} for door: ${selectedDoor.id}`);
       console.log(`[AccessScreen] Current doors state before update:`, JSON.stringify(doors.map(d => ({ id: d.id, isFavorite: d.isFavorite }))));
       
+      // Use standard immutable update
       const updatedDoors = doors.map(door => {
         if (door.id === selectedDoor.id) {
           console.log(`[AccessScreen] Updating door ${door.id} isFavorite from ${door.isFavorite} to ${isFavorite}`);
-          return { ...door, isFavorite };
+          return { ...door, isFavorite }; // Use spread syntax
         }
-        return door;
+        return door; // Return original object
       });
       
       console.log(`[AccessScreen] Setting doors state...`);
@@ -418,12 +403,13 @@ const AccessScreen = ({ onNavigateToHome }: AccessScreenProps) => {
       console.log(`[AccessScreen] handleToggleAlerts called with value: ${showAlerts} for door: ${selectedDoor.id}`);
       console.log(`[AccessScreen] Current doors state before update:`, JSON.stringify(doors.map(d => ({ id: d.id, showAlerts: d.showAlerts }))));
       
+      // Use standard immutable update
       const updatedDoors = doors.map(door => {
         if (door.id === selectedDoor.id) {
           console.log(`[AccessScreen] Updating door ${door.id} showAlerts from ${door.showAlerts} to ${showAlerts}`);
-          return { ...door, showAlerts };
+          return { ...door, showAlerts }; // Use spread syntax
         }
-        return door;
+        return door; // Return original object
       });
       
       console.log(`[AccessScreen] Setting doors state...`);
@@ -956,16 +942,17 @@ const AccessScreen = ({ onNavigateToHome }: AccessScreenProps) => {
       {/* Door Bottom Sheet */}
       {selectedDoor && (
         <DoorBottomSheet
+          key={selectedDoor.id}
           visible={doorBottomSheetVisible}
           onClose={handleCloseDoorBottomSheet}
-          doorName={selectedDoor.name}
           doorId={selectedDoor.id}
+          doorName={selectedDoor.name}
           onUnlock={handleDoorBottomSheetUnlock}
           onReportIssue={handleReportIssue}
           onToggleFavorite={handleToggleDoorFavorite}
-          isFavorite={selectedDoor.isFavorite || false}
-          showAlerts={selectedDoor.showAlerts || false}
           onToggleAlerts={handleToggleAlerts}
+          isFavorite={selectedDoor.isFavorite}
+          showAlerts={selectedDoor.showAlerts ?? true}
         />
       )}
     </View>

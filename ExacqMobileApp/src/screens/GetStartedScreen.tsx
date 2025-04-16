@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image, StatusBar, Platform, SafeAreaView } from 'react-native';
 import { UI_COLORS } from '../design-system/colors';
 import { TYPOGRAPHY, applyTypography } from '../design-system/typography';
 import { SvgXml } from 'react-native-svg';
@@ -35,10 +35,16 @@ const GetStartedScreen: React.FC<GetStartedScreenProps> = ({
 }) => {
   const [isLoginVisible, setIsLoginVisible] = useState(false);
 
-  // Log colors for debugging
+  // Configure status bar when component mounts
   useEffect(() => {
-    console.log('GetStartedScreen - COLOR VALUES:');
-    console.log('BACKGROUND_COLOR:', BACKGROUND_COLOR);
+    // Set status bar to light content (white text) for dark background
+    StatusBar.setBarStyle('light-content', true);
+    
+    if (Platform.OS === 'android') {
+      // For Android, explicitly set status bar background color
+      StatusBar.setBackgroundColor(BACKGROUND_COLOR);
+      StatusBar.setTranslucent(false);
+    }
   }, []);
 
   const handleLogin = (username: string, password: string) => {
@@ -60,75 +66,87 @@ const GetStartedScreen: React.FC<GetStartedScreenProps> = ({
   };
 
   return (
-    <View style={styles.container}>
-      {/* Background Glow with SVG */}
-      <View style={styles.backgroundContainer}>
-        <SvgXml xml={glowSvg} width={width} height={height} />
-      </View>
-
-      <View style={styles.contentContainer}>
-        {/* Content wrapper for image and text */}
-        <View style={styles.contentWrapper}>
-          {/* Hand with keycard illustration */}
-          <View style={styles.illustrationContainer}>
-            <Image 
-              source={require('../assets/images/Get Started.png')} 
-              style={{width: 360, height: 360}}
-              resizeMode="contain"
-            />
-          </View>
-          
-          {/* Heading Text */}
-          <View style={styles.textContainer}>
-            <Text style={styles.headingText}>
-              Secure access at{'\n'}
-              your fingertips.
-            </Text>
-            <Text style={styles.subText}>
-              Link your device to get started.
-            </Text>
-          </View>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar backgroundColor="#171925" barStyle="light-content" />
+      <View style={styles.container}>
+        {/* Background Glow with SVG */}
+        <View style={styles.backgroundContainer}>
+          <SvgXml xml={glowSvg} width={width} height={height} />
         </View>
-        
-        {/* Bottom buttons section */}
-        <View style={styles.buttonContainer}>
-          {/* Primary Get Started button */}
-          <TouchableOpacity 
-            style={styles.getStartedButton} 
-            onPress={() => setIsLoginVisible(true)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.getStartedButtonText}>Get Started</Text>
-          </TouchableOpacity>
+
+        <View style={styles.contentContainer}>
+          {/* Content wrapper for image and text */}
+          <View style={styles.contentWrapper}>
+            {/* Hand with keycard illustration */}
+            <View style={styles.illustrationContainer}>
+              <Image 
+                source={require('../assets/images/Get Started.png')} 
+                style={{width: 360, height: 360}}
+                resizeMode="contain"
+              />
+            </View>
+            
+            {/* Heading Text */}
+            <View style={styles.textContainer}>
+              <Text style={styles.headingText}>
+                Secure access at{'\n'}
+                your fingertips.
+              </Text>
+              <Text style={styles.subText}>
+                Link your device to get started.
+              </Text>
+            </View>
+          </View>
           
-          {/* Learn more section */}
-          <View style={styles.learnMoreContainer}>
-            <Text style={styles.accessText}>
-              Haven't been granted access?
-            </Text>
-            <TouchableOpacity
-              onPress={onLearnMore}
+          {/* Bottom buttons section */}
+          <View style={styles.buttonContainer}>
+            {/* Primary Get Started button */}
+            <TouchableOpacity 
+              style={styles.getStartedButton} 
+              onPress={() => setIsLoginVisible(true)}
               activeOpacity={0.8}
             >
-              <Text style={styles.learnMoreText}>Learn More</Text>
+              <Text style={styles.getStartedButtonText}>Get Started</Text>
             </TouchableOpacity>
+            
+            {/* Learn more section */}
+            <View style={styles.learnMoreContainer}>
+              <Text style={styles.accessText}>
+                Haven't been granted access?
+              </Text>
+              <TouchableOpacity
+                onPress={onLearnMore}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.learnMoreText}>Learn More</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
 
-      {/* LoginBottomSheet with OTP verification flow */}
-      <LoginBottomSheet
-        visible={isLoginVisible}
-        onClose={() => setIsLoginVisible(false)}
-        onLogin={handleLogin}
-        onVerify={handleVerify}
-        onPasscodeSet={handlePasscodeSet}
-      />
-    </View>
+        {/* LoginBottomSheet with OTP verification flow */}
+        <LoginBottomSheet
+          visible={isLoginVisible}
+          onClose={() => setIsLoginVisible(false)}
+          onLogin={handleLogin}
+          onVerify={handleVerify}
+          onPasscodeSet={handlePasscodeSet}
+        />
+      </View>
+      
+      {/* iOS home indicator fix */}
+      {Platform.OS === 'ios' && (
+        <View style={styles.homeIndicatorFix} />
+      )}
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: BACKGROUND_COLOR,
+  },
   container: {
     flex: 1,
     backgroundColor: BACKGROUND_COLOR,
@@ -212,6 +230,14 @@ const styles = StyleSheet.create({
     ...applyTypography(TYPOGRAPHY.BUTTON_SMALL, {
       color: UI_COLORS.PRIMARY.DEFAULT, // #64DCFA - Accent blue
     }),
+  },
+  homeIndicatorFix: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 34, // Home indicator height
+    backgroundColor: BACKGROUND_COLOR,
   },
 });
 

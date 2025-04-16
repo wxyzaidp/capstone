@@ -11,17 +11,28 @@ const roleColors = {
 };
 
 interface AccessCardProps {
-  name?: string;
-  role?: string;
-  onPress?: () => void;
+  cardId: string;
+  name: string;
+  role: string;
+  index: number;
+  onPress: () => void;
+  isInteractive?: boolean;
 }
 
-export default function AccessCard({ onPress }: AccessCardProps) {
+export default function AccessCard({ 
+  cardId, 
+  name, 
+  role, 
+  index, 
+  onPress,
+  isInteractive = true 
+}: AccessCardProps) {
   return (
     <TouchableOpacity 
       activeOpacity={0.8} 
       onPress={onPress}
       style={styles.touchable}
+      disabled={!isInteractive}
     >
       <LinearGradient
         colors={['#64DCFA', 'transparent', 'transparent', '#64DCFA']}

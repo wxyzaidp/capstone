@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { UI_COLORS } from '../design-system/colors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Import SVG files as React components
 import HomeDefault from '../assets/Home-default.svg';
@@ -36,6 +37,7 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({
   activeTab: propActiveTab 
 }) => {
   const [internalActiveTab, setInternalActiveTab] = useState(TABS.HOME);
+  const insets = useSafeAreaInsets();
   
   // Use the prop active tab if provided, otherwise use internal state
   const activeTab = propActiveTab || internalActiveTab;
@@ -77,7 +79,7 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
       {tabs.map(tab => {
         const isActive = activeTab === tab.id;
         
@@ -116,7 +118,6 @@ const styles = StyleSheet.create({
     backgroundColor: NAVBAR_COLOR,
     flexDirection: 'row',
     paddingTop: 12,
-    paddingBottom: 0,
     position: 'relative',
     borderTopWidth: 0,
     borderTopColor: 'rgba(255, 255, 255, 0.08)',

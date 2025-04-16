@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
 import { UI_COLORS, UI_TYPOGRAPHY } from '../design-system';
 import Svg, { Path } from 'react-native-svg';
 import Constants from 'expo-constants';
 import ChevronIcon from './icons/ChevronIcon';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Building Icon 
 const BuildingIcon = ({ size = 24, color = '#FFFFFF' }) => {
@@ -24,65 +24,60 @@ interface AccessTopBarProps {
   onBuildingPress?: () => void;
 }
 
-const STATUSBAR_COLOR = '#23262D';
+const TOPBAR_COLOR = UI_COLORS.BACKGROUND.CARD;
 
 const AccessTopBar = ({ 
   title = "Access",
   onBackPress,
   onBuildingPress
 }: AccessTopBarProps) => {
+  const insets = useSafeAreaInsets();
+
   return (
-    <View style={styles.safeAreaContainer}>
-      <StatusBar style="light" backgroundColor={STATUSBAR_COLOR} />
-      <View style={styles.container}>
-        <View style={styles.leftContent}>
-          <TouchableOpacity 
-            style={styles.iconButtonLeading}
-            onPress={onBackPress}
-            activeOpacity={0.7}
-          >
-            <ChevronIcon 
-              width={24} 
-              height={24} 
-              fill="#FFFFFF" 
-              direction="left" 
-            />
-          </TouchableOpacity>
-          
-          <Text 
-            style={styles.title}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-          >
-            {title}
-          </Text>
-        </View>
+    <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
+      <View style={styles.leftContent}>
+        <TouchableOpacity 
+          style={styles.iconButtonLeading}
+          onPress={onBackPress}
+          activeOpacity={0.7}
+        >
+          <ChevronIcon 
+            width={24} 
+            height={24} 
+            fill="#FFFFFF" 
+            direction="left" 
+          />
+        </TouchableOpacity>
         
-        <View style={styles.rightSection}>
-          <TouchableOpacity 
-            style={styles.iconButtonTrailing}
-            onPress={onBuildingPress}
-            activeOpacity={0.7}
-          >
-            <BuildingIcon size={24} color="white" />
-          </TouchableOpacity>
-        </View>
+        <Text 
+          style={styles.title}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
+          {title}
+        </Text>
+      </View>
+      
+      <View style={styles.rightSection}>
+        <TouchableOpacity 
+          style={styles.iconButtonTrailing}
+          onPress={onBuildingPress}
+          activeOpacity={0.7}
+        >
+          <BuildingIcon size={24} color="white" />
+        </TouchableOpacity>
       </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  safeAreaContainer: {
-    backgroundColor: STATUSBAR_COLOR,
-    paddingTop: Platform.OS === 'android' ? Constants.statusBarHeight : 0,
-  },
   container: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: STATUSBAR_COLOR,
-    padding: 12,
+    backgroundColor: TOPBAR_COLOR,
+    paddingBottom: 12,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(70, 78, 97, 0.35)',
@@ -111,7 +106,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: '#FFFFFF',
     letterSpacing: 0.1,
-    marginLeft: 12, // 12px spacing between back button and title
+    marginLeft: 12,
     textAlign: 'left',
   },
   iconButtonTrailing: {

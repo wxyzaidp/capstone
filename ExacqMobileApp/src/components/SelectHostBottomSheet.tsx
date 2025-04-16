@@ -123,6 +123,10 @@ const SelectHostBottomSheet: React.FC<SelectHostBottomSheetProps> = ({
       // Reset the pan position
       pan.setValue(0);
       
+      // Reset search text and focus when opening
+      setSearchText('');
+      setIsFocused(false);
+      
       // Animate the bottom sheet up with improved animation settings
       Animated.parallel([
         Animated.spring(translateY, {

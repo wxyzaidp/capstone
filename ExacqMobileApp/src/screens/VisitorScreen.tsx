@@ -1,15 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Image } from 'react-native';
 import { UI_COLORS, UI_TYPOGRAPHY, applyTypography } from '../design-system';
 import AccessTopBar from '../components/AccessTopBar';
 import VisitorsList from '../components/VisitorsList';
 import LocationBottomSheet from '../components/LocationBottomSheet';
 import { Feather } from '@expo/vector-icons';
+import { Svg, Path } from 'react-native-svg';
 import ChevronIcon from '../components/icons/ChevronIcon';
 import CreateInviteScreen from './CreateInviteScreen';
 import InviteService, { Invite as InviteType } from '../services/InviteService';
 import TimeService from '../services/TimeService';
 import Toast from '../components/Toast';
+import { useNavigation, NavigationProp, ParamListBase } from '@react-navigation/native';
+import { useRoute, RouteProp } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 
 // Define enum for active tab
 enum VisitorTab {
@@ -51,7 +55,14 @@ interface VisitorScreenProps {
   onInviteFlowStateChange?: (isActive: boolean) => void;
 }
 
+// Define ParamList for VisitorScreen route
+type VisitorScreenRouteProp = RouteProp<{ params: { inviteCreated?: boolean } }, 'params'>;
+
 const VisitorScreen = ({ onNavigateToHome, onInviteFlowStateChange }: VisitorScreenProps) => {
+  // Navigation hook
+  const navigation = useNavigation<NavigationProp<ParamListBase>>();
+  const route = useRoute<VisitorScreenRouteProp>();
+  
   // State for active tab
   const [activeTab, setActiveTab] = useState<VisitorTab>(VisitorTab.INVITATION);
   
@@ -71,33 +82,69 @@ const VisitorScreen = ({ onNavigateToHome, onInviteFlowStateChange }: VisitorScr
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
-  // Sample visitor data for today - keep for now as fallback
-  const todayVisitors: Visitor[] = [
-    {
-      id: '1',
-      name: 'Graham Stephen',
-      date: '03/22/25',
-      timeRange: '9:30 AM - 11:00 AM',
-      imageUrl: 'https://randomuser.me/api/portraits/men/32.jpg',
-      status: 'checkedIn'
-    },
-    {
-      id: '2',
-      name: 'Adam Smith',
-      date: '03/22/25',
-      timeRange: '12:30 PM - 1:30 PM',
-      imageUrl: 'https://randomuser.me/api/portraits/men/44.jpg',
-      status: 'invited'
-    },
-    {
-      id: '3',
-      name: 'Henry Wells',
-      date: '03/22/25',
-      timeRange: '3:00 PM - 4:00 PM',
-      imageUrl: 'https://randomuser.me/api/portraits/men/68.jpg',
-      status: 'invited'
-    }
-  ];
+  // Sample visitor data for today - needs to be converted to InviteType with ISO dates
+  const generateSampleInvites = (): InviteType[] => {
+    const today = new Date();
+    const samples: Visitor[] = [
+      {
+        id: '1',
+        name: 'Graham Stephen',
+        date: '03/22/25', // Note: Date format here is illustrative, actual parsing depends on implementation
+        timeRange: '9:30 AM - 11:00 AM',
+        imageUrl: 'https://randomuser.me/api/portraits/men/32.jpg',
+        status: 'checkedIn'
+      },
+      {
+        id: '2',
+        name: 'Adam Smith',
+        date: '03/22/25',
+        timeRange: '12:30 PM - 1:30 PM',
+        imageUrl: 'https://randomuser.me/api/portraits/men/44.jpg',
+        status: 'invited'
+      },
+      {
+        id: '3',
+        name: 'Henry Wells',
+        date: '03/22/25',
+        timeRange: '3:00 PM - 4:00 PM',
+        imageUrl: 'https://randomuser.me/api/portraits/men/68.jpg',
+        status: 'invited'
+      }
+    ];
+
+    return samples.map(visitor => {
+        const timeParts = visitor.timeRange.split(' - ');
+        const startTimeStr = timeParts[0];
+        const endTimeStr = timeParts[1];
+
+        // Helper to parse H:MM AM/PM string into a Date object for today
+        const parseTimeToday = (timeStr: string): Date => {
+            const time = TimeService.parseTimeString(timeStr); // Use TimeService
+            const dateTime = new Date(today); 
+            if (time && TimeService.isValidDate(time)) { // Use TimeService
+                dateTime.setHours(time.getHours(), time.getMinutes(), 0, 0);
+            } else {
+                dateTime.setHours(9, 0, 0, 0); // Default to 9 AM
+            }
+            return dateTime;
+        };
+
+        const startDate = parseTimeToday(startTimeStr);
+        const endDate = parseTimeToday(endTimeStr);
+
+        return {
+            id: `sample-${visitor.id}`,
+            visitorName: visitor.name,
+            validFrom: startDate.toISOString(),
+            validUntil: endDate.toISOString(),
+            status: visitor.status === 'checkedIn' ? 'Active' : 'Pending',
+            hostName: 'Demo Host',
+            sampleImageUrl: visitor.imageUrl, 
+        };
+    });
+  };
+  
+  const [sampleInvites] = useState<InviteType[]>(generateSampleInvites());
 
   // Update the useEffect to add more detailed logging
   useEffect(() => {
@@ -149,6 +196,20 @@ const VisitorScreen = ({ onNavigateToHome, onInviteFlowStateChange }: VisitorScr
     };
   }, []);
 
+  // NEW: Effect replaced with useFocusEffect to handle inviteCreated param
+  useFocusEffect(
+    useCallback(() => {
+      // This code runs when the screen comes into focus
+      if (route.params?.inviteCreated) {
+        console.log('[VisitorScreen] Screen focused with inviteCreated param.');
+        setToastMessage('Invitation has been created successfully');
+        setToastVisible(true);
+        // Clear the param to prevent toast showing again on subsequent focuses
+        navigation.setParams({ inviteCreated: undefined });
+      }
+    }, [navigation, route.params]) // Dependencies for useCallback
+  );
+
   // Handler for tab change
   const handleTabChange = (tab: VisitorTab) => {
     setActiveTab(tab);
@@ -157,7 +218,9 @@ const VisitorScreen = ({ onNavigateToHome, onInviteFlowStateChange }: VisitorScr
   // Handler for add button press
   const handleAddPress = () => {
     console.log('Add visitor button pressed');
-    setShowCreateInvite(true);
+    // Navigate to CreateInvite screen
+    navigation.navigate('CreateInvite');
+    
     // Notify parent that invite flow is active
     if (onInviteFlowStateChange) {
       onInviteFlowStateChange(true);
@@ -173,37 +236,15 @@ const VisitorScreen = ({ onNavigateToHome, onInviteFlowStateChange }: VisitorScr
     }
   };
 
-  // Update the handle create invite function to avoid duplicate creation
-  const handleCreateInvite = async (inviteData) => {
-    console.log('[VisitorScreen] Received invite creation callback:', inviteData);
-    
-    // Show success toast - the invite is already created by CreateInviteScreen
-    setToastMessage('Invitation has been created successfully');
-    setToastVisible(true);
-    
-    // Close the invite screen
-    setShowCreateInvite(false);
-    
-    // Notify parent that invite flow is no longer active
-    if (onInviteFlowStateChange) {
-      onInviteFlowStateChange(false);
-    }
-  };
-
   // Handle the toast dismiss action
   const handleToastDismiss = () => {
     setToastVisible(false);
   };
 
-  // Handle navigate to home
+  // Handle navigate to home (or selected tab)
   const handleBackPress = () => {
-    console.log('Navigating back to home');
-    if (onNavigateToHome) {
-      onNavigateToHome();
-    } else {
-      // If no prop provided, we could dispatch an event or use context
-      console.log('Would navigate to home screen (onNavigateToHome not provided)');
-    }
+    console.log('Back pressed, navigating to Home tab');
+    navigation.navigate('Home'); // Navigate specifically to Home tab
   };
 
   // Handle location selection
@@ -283,55 +324,35 @@ const VisitorScreen = ({ onNavigateToHome, onInviteFlowStateChange }: VisitorScr
   const formatInviteDateTime = (invite: InviteType) => {
     try {
       console.log('[VisitorScreen] Formatting date/time for invite:', invite.id);
-      
-      // Log the raw date strings for debugging
-      console.log('[VisitorScreen] Raw date strings:');
-      console.log(`- From: "${invite.validFrom}"`);
-      console.log(`- Until: "${invite.validUntil}"`);
-      
-      // Check if the times indicate an all-day event (12:00 AM and 11:59 PM)
-      const isFromAllDayStart = invite.validFrom.includes('12:00 AM');
-      const isUntilAllDayEnd = invite.validUntil.includes('11:59 PM');
-      const isLikelyAllDay = isFromAllDayStart && isUntilAllDayEnd;
-      
-      console.log(`[VisitorScreen] All-day detection: ${isLikelyAllDay} (start: ${isFromAllDayStart}, end: ${isUntilAllDayEnd})`);
-      
-      // Use TimeService to parse dates from ISO strings
-      const startDate = TimeService.fromISOString(invite.validFrom);
-      const endDate = TimeService.fromISOString(invite.validUntil);
-      
-      // Check if dates are valid before formatting
+      console.log(`- From ISO: "${invite.validFrom}"`);
+      console.log(`- Until ISO: "${invite.validUntil}"`);
+
+      // Parse directly using new Date() - Input MUST be ISO string now
+      const startDate = new Date(invite.validFrom);
+      const endDate = new Date(invite.validUntil);
+
+      // Check if dates are valid after parsing
       if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        console.error('[VisitorScreen] Invalid date(s):', { 
+        console.error('[VisitorScreen] Invalid date(s) after parsing ISO string:', {
           from: invite.validFrom, 
-          until: invite.validUntil 
+          until: invite.validUntil, 
+          parsedStart: startDate.toString(),
+          parsedEnd: endDate.toString()
         });
         return { date: 'Invalid date', timeRange: 'Invalid time' };
       }
       
       // Log the parsed Date objects
-      console.log('[VisitorScreen] Parsed Date objects:');
+      console.log('[VisitorScreen] Parsed Date objects from ISO:');
       console.log(`- Start: ${startDate.toString()}`);
       console.log(`- End: ${endDate.toString()}`);
       
-      // Use TimeService to format the date and time range
-      // If it looks like an all-day event, tell the formatter
-      if (isLikelyAllDay) {
-        // Create proper all-day dates (0:00 and 23:59)
-        const allDayStart = new Date(startDate);
-        allDayStart.setHours(0, 0, 0, 0);
-        
-        const allDayEnd = new Date(endDate);
-        allDayEnd.setHours(23, 59, 59, 999);
-        
-        const result = TimeService.formatDateTimeRange(allDayStart, allDayEnd);
-        console.log('[VisitorScreen] Formatted as all-day event:', result);
-        return result;
-      } else {
-        const result = TimeService.formatDateTimeRange(startDate, endDate);
-        console.log('[VisitorScreen] Formatted as regular event:', result);
-        return result;
-      }
+      // Use TimeService (or DateService) to format the date and time range
+      // Assuming formatDateTimeRange exists and handles Date objects
+      const result = TimeService.formatDateTimeRange(startDate, endDate); 
+      console.log('[VisitorScreen] Formatted date/time range:', result);
+      return result;
+
     } catch (error) {
       console.error('[VisitorScreen] Error formatting date/time:', error);
       return {
@@ -402,9 +423,16 @@ const VisitorScreen = ({ onNavigateToHome, onInviteFlowStateChange }: VisitorScr
         console.log(`[VisitorScreen] Categorizing invite: ${invite.id}`);
         console.log(`[VisitorScreen] Date string: "${invite.validFrom}"`);
         
-        // Use our improved TimeService to parse the date
-        const inviteDate = TimeService.fromISOString(invite.validFrom);
+        // Parsing MUST assume invite.validFrom is ISO 8601
+        const inviteDate = new Date(invite.validFrom);
         
+        if (!TimeService.isValidDate(inviteDate)) { // Use TimeService
+             console.error(`[VisitorScreen] Invalid date parsed from ISO string for invite ${invite.id}: "${invite.validFrom}"`);
+             // Handle error, maybe push to a default category
+             categories['Today'].push(invite);
+             return; // Skip further categorization for this invalid invite
+        }
+
         // Reset time portion for comparison
         const dateForComparison = new Date(inviteDate);
         dateForComparison.setHours(0, 0, 0, 0);
@@ -502,40 +530,8 @@ const VisitorScreen = ({ onNavigateToHome, onInviteFlowStateChange }: VisitorScr
   // Update the main content section in the return statement to use categorized invites
   const renderCategorizedInvites = () => {
     // Create a combined array with both real invites and sample data
-    const combinedInvites = [...invites];
-    const hasRealInvites = invites.length > 0;
-    
-    // If there are no invites or explicitly including sample data, add the dummy entries
-    if (!hasRealInvites || true) { // Always add dummy entries
-      console.log('[VisitorScreen] Adding sample visitor data');
-      
-      // Get today's date formatted for the sample data
-      const today = new Date();
-      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      
-      const dayName = dayNames[today.getDay()];
-      const monthName = monthNames[today.getMonth()];
-      const day = today.getDate();
-      const year = today.getFullYear();
-      
-      const formattedToday = `${dayName}, ${monthName} ${day} ${year}`;
-      console.log(`[VisitorScreen] Using today's date for samples: ${formattedToday}`);
-      
-      // Convert sample data to Invite format
-      const dummyInvites: InviteType[] = todayVisitors.map(visitor => ({
-        id: `sample-${visitor.id}`,
-        visitorName: visitor.name,
-        // Format the date string in a way compatible with our parser, using today's date
-        validFrom: `${formattedToday}, ${visitor.timeRange.split(' - ')[0]}`,
-        validUntil: `${formattedToday}, ${visitor.timeRange.split(' - ')[1]}`,
-        status: visitor.status === 'checkedIn' ? 'Active' : 'Pending',
-        hostName: 'Demo Host'
-      }));
-      
-      // Add dummy invites to our array
-      combinedInvites.push(...dummyInvites);
-    }
+    // Use the generated sampleInvites state
+    const combinedInvites = [...invites, ...sampleInvites]; 
     
     if (combinedInvites.length === 0) {
       return (
@@ -545,6 +541,7 @@ const VisitorScreen = ({ onNavigateToHome, onInviteFlowStateChange }: VisitorScr
       );
     }
     
+    // Ensure categorization works with InviteType[] directly
     const sortedCategories = getSortedCategories(combinedInvites);
     
     return (
@@ -556,33 +553,31 @@ const VisitorScreen = ({ onNavigateToHome, onInviteFlowStateChange }: VisitorScr
             </View>
             
             {category.invites.map((invite, index) => {
-              // Format the date and time
+              // Format the date and time using the simplified function
               const { date, timeRange } = formatInviteDateTime(invite);
               
-              // Check if this is a sample invite (to show checked-in status)
-              const isSampleInvite = invite.id.startsWith('sample-');
-              const sampleVisitor = isSampleInvite ? 
-                todayVisitors.find(v => `sample-${v.id}` === invite.id) : 
-                null;
-              
+              // Check if this is a sample invite and get its image URL
+              const isSample = invite.id.startsWith('sample-');
+              const imageUrl = isSample ? (invite as any).sampleImageUrl : null;
+              const status = isSample ? (sampleInvites.find(s => s.id === invite.id)?.status === 'Active' ? 'Checked In' : 'Invited') : 'Invited'; // Determine sample status
+
               return (
                 <React.Fragment key={invite.id}>
                   <View style={styles.visitorItem}>
                     <View style={styles.visitorDetails}>
                       <View style={styles.avatar}>
-                        {/* Show image for sample visitors if available */}
-                        {sampleVisitor && sampleVisitor.imageUrl ? (
+                        {imageUrl ? (
                           <Image 
-                            source={{ uri: sampleVisitor.imageUrl }} 
+                            source={{ uri: imageUrl }} 
                             style={styles.avatarImage} 
                             resizeMode="cover"
                           />
                         ) : (
-                          // Show first letter of visitor's name for user-created invites
+                          // Show first letter initials
                           <View 
                             style={[
                               styles.initialAvatar,
-                              { backgroundColor: '#2E333D' }
+                              { backgroundColor: '#2E333D' } // Example color
                             ]}
                           >
                             <Text style={styles.initialText}>
@@ -605,12 +600,12 @@ const VisitorScreen = ({ onNavigateToHome, onInviteFlowStateChange }: VisitorScr
                     <Text 
                       style={[
                         styles.statusText,
-                        sampleVisitor && sampleVisitor.status === 'checkedIn' 
+                        status === 'Checked In' 
                           ? styles.checkedInText 
                           : styles.invitedText
                       ]}
                     >
-                      {sampleVisitor && sampleVisitor.status === 'checkedIn' ? 'Checked In' : 'Invited'}
+                      {status}
                     </Text>
                   </View>
                   {index < category.invites.length - 1 && (
@@ -625,105 +620,71 @@ const VisitorScreen = ({ onNavigateToHome, onInviteFlowStateChange }: VisitorScr
     );
   };
 
+  // Render address book content
+  const renderAddressBook = () => {
+    return (
+      <View style={styles.addressBookContainer}>
+        <Text style={styles.emptyText}>Address book content will go here</Text>
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
-      {showCreateInvite ? (
-        <CreateInviteScreen 
-          onClose={handleCloseCreateInvite}
-          onCreateInvite={handleCreateInvite}
-        />
-      ) : (
-        <>
-          {/* Add debug button in development */}
-          {renderDebugButton()}
-          
-          {/* Top Bar - Using AccessTopBar with same configuration as AccessScreen */}
-          <AccessTopBar 
-            title="Visitor" 
-            onBackPress={handleBackPress}
-            onBuildingPress={handleLocationButtonPress}
-          />
-          
-          {/* Segmented Control */}
-          <View style={styles.tabContainer}>
-            <View style={styles.segmentedControl}>
-              <TouchableOpacity
-                style={[
-                  styles.tabButton,
-                  activeTab === VisitorTab.INVITATION && styles.activeTabButton
-                ]}
-                onPress={() => handleTabChange(VisitorTab.INVITATION)}
-              >
-                <Text
-                  style={[
-                    styles.tabButtonText,
-                    activeTab === VisitorTab.INVITATION && styles.activeTabButtonText
-                  ]}
-                >
-                  Invitation
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.tabButton,
-                  activeTab === VisitorTab.ADDRESS_BOOK && styles.activeTabButton
-                ]}
-                onPress={() => handleTabChange(VisitorTab.ADDRESS_BOOK)}
-              >
-                <Text
-                  style={[
-                    styles.tabButtonText,
-                    activeTab === VisitorTab.ADDRESS_BOOK && styles.activeTabButtonText
-                  ]}
-                >
-                  Address Book
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          {/* Main Content */}
-          <ScrollView 
-            style={styles.content}
-            contentContainerStyle={styles.contentContainer}
+      <AccessTopBar 
+        title="Visitors"
+        onBackPress={handleBackPress}
+        onBuildingPress={handleLocationButtonPress}
+      />
+      
+      <View style={styles.tabContainer}>
+        <View style={styles.tabBar}>
+          <TouchableOpacity 
+            style={[styles.tab, activeTab === VisitorTab.INVITATION && styles.activeTab]}
+            onPress={() => handleTabChange(VisitorTab.INVITATION)}
           >
-            {activeTab === VisitorTab.INVITATION && (
-              renderCategorizedInvites()
-            )}
-            
-            {activeTab === VisitorTab.ADDRESS_BOOK && (
-              <View style={styles.addressBookContainer}>
-                <Text style={styles.emptyText}>Address book content will go here</Text>
-              </View>
-            )}
-          </ScrollView>
-          
-          {/* Add Button */}
-          <TouchableOpacity style={styles.addButton} onPress={handleAddPress}>
-            <Feather name="plus" size={24} color="#131515" />
+            <Text style={[styles.tabText, activeTab === VisitorTab.INVITATION && styles.activeTabText]}>
+              Invitations
+            </Text>
           </TouchableOpacity>
-
-          {/* Location Bottom Sheet */}
-          <LocationBottomSheet
-            visible={locationBottomSheetVisible}
-            locations={locations}
-            selectedLocationId={selectedLocationId}
-            onClose={handleCloseLocationBottomSheet}
-            onSelectLocation={handleLocationSelection}
-          />
-
-          {/* Toast Notification */}
-          <Toast
-            visible={toastVisible}
-            message={toastMessage}
-            onDismiss={handleToastDismiss}
-            duration={4000}
-            showDismissButton={true}
-            hapticFeedback={true}
-            hapticType="success"
-          />
-        </>
-      )}
+          <TouchableOpacity 
+            style={[styles.tab, activeTab === VisitorTab.ADDRESS_BOOK && styles.activeTab]}
+            onPress={() => handleTabChange(VisitorTab.ADDRESS_BOOK)}
+          >
+            <Text style={[styles.tabText, activeTab === VisitorTab.ADDRESS_BOOK && styles.activeTabText]}>
+              Address Book
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      
+      <View style={styles.content}>
+        {activeTab === VisitorTab.INVITATION && renderCategorizedInvites()}
+        {activeTab === VisitorTab.ADDRESS_BOOK && renderAddressBook()}
+      </View>
+      
+      <TouchableOpacity 
+        style={styles.addButton}
+        onPress={handleAddPress}
+      >
+        <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <Path d="M11 19V13H5V11H11V5H13V11H19V13H13V19H11Z" fill="#131515"/>
+        </Svg>
+      </TouchableOpacity>
+      
+      <LocationBottomSheet 
+        visible={locationBottomSheetVisible}
+        locations={locations}
+        selectedLocationId={selectedLocationId}
+        onClose={handleCloseLocationBottomSheet}
+        onSelectLocation={handleLocationSelection}
+      />
+      
+      <Toast 
+        visible={toastVisible}
+        message={toastMessage}
+        onDismiss={handleToastDismiss}
+      />
     </View>
   );
 };
@@ -738,7 +699,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  segmentedControl: {
+  tabBar: {
     flexDirection: 'row',
     backgroundColor: 'transparent',
     borderWidth: 1,
@@ -747,29 +708,26 @@ const styles = StyleSheet.create({
     padding: 4,
     height: 56,
   },
-  tabButton: {
+  tab: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 12,
     borderRadius: 12,
   },
-  activeTabButton: {
+  activeTab: {
     backgroundColor: '#6FDCFA',
   },
-  tabButtonText: {
+  tabText: {
     fontFamily: 'Outfit-Medium',
     fontSize: 16,
     color: '#FFFFFF',
   },
-  activeTabButtonText: {
+  activeTabText: {
     color: '#131515',
   },
   content: {
     flex: 1,
-  },
-  contentContainer: {
-    flexGrow: 1,
   },
   visitorsList: {
     width: '100%',

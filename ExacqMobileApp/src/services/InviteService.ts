@@ -72,137 +72,62 @@ class InviteService {
     console.log('[InviteService] createInvite called with data:', JSON.stringify(inviteData, null, 2));
     
     try {
-      // Validate input data
+      // Validate input data (ensure ISO strings are provided)
       if (!inviteData.visitorName) {
         console.error('[InviteService] ERROR: Missing required field visitorName');
         throw new Error('Missing required field visitorName');
       }
       
-      if (!inviteData.validFrom) {
-        console.error('[InviteService] ERROR: Missing required field validFrom');
-        throw new Error('Missing required field validFrom');
+      if (!inviteData.validFrom || isNaN(new Date(inviteData.validFrom).getTime())) {
+        console.error(`[InviteService] ERROR: Invalid or missing validFrom ISO string: "${inviteData.validFrom}"`);
+        throw new Error('Invalid or missing required field validFrom (must be ISO string)');
       }
       
-      if (!inviteData.validUntil) {
-        console.error('[InviteService] ERROR: Missing required field validUntil');
-        throw new Error('Missing required field validUntil');
+      if (!inviteData.validUntil || isNaN(new Date(inviteData.validUntil).getTime())) {
+        console.error(`[InviteService] ERROR: Invalid or missing validUntil ISO string: "${inviteData.validUntil}"`);
+        throw new Error('Invalid or missing required field validUntil (must be ISO string)');
       }
-      
-      // Standardize date format - ensure we store ISO strings with proper timezone handling
-      const standardizeDate = (dateStr: string): string => {
-        try {
-          console.log(`[InviteService] Standardizing date: "${dateStr}"`);
-          
-          // Check if this is an all-day format (no time component or specific markers)
-          const isAllDayFormat = dateStr.includes("12:00 AM") || dateStr.includes("11:59 PM");
-          if (isAllDayFormat) {
-            console.log(`[InviteService] Detected all-day format date string`);
-          }
-          
-          // Check if dateStr contains the typical error pattern with "Satruday" (typo)
-          const hasSaturdayTypo = dateStr.includes("Satruday");
-          if (hasSaturdayTypo) {
-            console.log(`[InviteService] Detected "Satruday" typo in date string, fixing it`);
-            dateStr = dateStr.replace("Satruday", "Saturday");
-          }
-          
-          // Use TimeService's robust parsing with our enhanced diagnosis
-          const date = TimeService.fromISOString(dateStr);
-          
-          // Log the resulting date object
-          console.log(`[InviteService] Parsed date object:`, {
-            toString: date.toString(),
-            toISOString: date.toISOString(),
-            isValid: !isNaN(date.getTime()),
-            hours: date.getHours(),
-            minutes: date.getMinutes(),
-            isAllDayStart: date.getHours() === 0 && date.getMinutes() === 0,
-            isAllDayEnd: date.getHours() === 23 && date.getMinutes() === 59
-          });
-          
-          // Verify that the date seems reasonable (not too far in past or future)
-          const now = new Date();
-          const oneYearAgo = new Date(now);
-          oneYearAgo.setFullYear(now.getFullYear() - 1);
-          
-          const fiveYearsFromNow = new Date(now);
-          fiveYearsFromNow.setFullYear(now.getFullYear() + 5);
-          
-          if (date < oneYearAgo || date > fiveYearsFromNow) {
-            console.warn(`[InviteService] Parsed date (${date.toDateString()}) seems unreasonable, it's outside the expected range`);
-          }
-          
-          // Check if parsing was successful
-          if (!isNaN(date.getTime())) {
-            // Convert back to ISO string to ensure standard format
-            const isoString = date.toISOString();
-            console.log(`[InviteService] Successfully standardized to ISO: ${isoString}`);
-            
-            // Verify the ISO string can be parsed back correctly
-            const verifyDate = new Date(isoString);
-            console.log(`[InviteService] Verification: ${verifyDate.toString()}`);
-            
-            return isoString;
-          }
-          
-          // This code shouldn't be reached anymore since TimeService.fromISOString now always returns a valid date
-          console.warn('[InviteService] Could not parse date, using current time');
-          return new Date().toISOString();
-        } catch (error) {
-          console.error('[InviteService] Error standardizing date:', error);
-          console.error('[InviteService] Error stack:', error.stack);
-          
-          // Return current time as fallback
-          return new Date().toISOString();
-        }
-      };
-      
+
       // Generate a unique ID
       const id = `invite-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       console.log('[InviteService] Generated ID:', id);
       
-      // Create the invite object with standardized dates
+      // Create the invite object directly with provided ISO strings
       const invite: Invite = {
         id,
         visitorName: inviteData.visitorName,
-        validFrom: standardizeDate(inviteData.validFrom),
-        validUntil: standardizeDate(inviteData.validUntil),
-        status: 'Active',
+        validFrom: inviteData.validFrom, // Directly use the provided ISO string
+        validUntil: inviteData.validUntil, // Directly use the provided ISO string
+        status: 'Active', // Or 'Pending' depending on desired initial state
         hostName: inviteData.hostName
       };
       
-      console.log('[InviteService] Standardized dates:');
+      console.log('[InviteService] Using provided ISO dates:');
       console.log(`- validFrom: ${invite.validFrom}`);
       console.log(`- validUntil: ${invite.validUntil}`);
       
-      // Format for display to verify correct time
-      const startDate = TimeService.fromISOString(invite.validFrom);
-      const endDate = TimeService.fromISOString(invite.validUntil);
-      const formattedTime = TimeService.formatDateTimeRange(startDate, endDate);
+      // Format for display to verify correct time (using a reliable parser for ISO)
+      const startDate = new Date(invite.validFrom);
+      const endDate = new Date(invite.validUntil);
+      const formattedTime = TimeService.formatDateTimeRange(startDate, endDate); // Assuming TimeService still exists and has this
       console.log('[InviteService] Formatted time for verification:', formattedTime);
       
       // Add to invites array
       this.invites.push(invite);
       console.log('[InviteService] Invite added to internal array, total count:', this.invites.length);
       
+      // Persist to storage
       try {
-        // Attempt to persist to AsyncStorage, but don't fail if it doesn't work
         console.log('[InviteService] Attempting to persist invites to storage...');
-        
-        // Only store the IDs in the main key
         const inviteIds = this.invites.map(inv => inv.id);
         await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(inviteIds));
-        
-        // Store each invite separately by ID
         await AsyncStorage.setItem(`invite_${id}`, JSON.stringify(invite));
-        
         console.log('[InviteService] Successfully persisted invites to storage');
       } catch (storageError) {
-        // Don't fail the whole operation if storage fails
         console.error('[InviteService] Error persisting to AsyncStorage (non-fatal):', storageError);
       }
       
-      // Call direct callbacks immediately
+      // Call direct callbacks
       console.log(`[InviteService] Calling ${this.directCallbacks.length} direct callbacks`);
       this.directCallbacks.forEach(callback => {
         try {
@@ -213,7 +138,7 @@ class InviteService {
         }
       });
       
-      // Emit the event (for legacy reasons)
+      // Emit the event
       try {
         console.log('[InviteService] Emitting INVITE_CREATED event');
         this.eventEmitter.emit(INVITE_EVENTS.INVITE_CREATED, invite);

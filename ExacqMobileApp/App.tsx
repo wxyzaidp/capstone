@@ -1,15 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { SafeAreaView, StatusBar, StyleSheet, View, Platform } from 'react-native';
+import { /* SafeAreaView, */ StyleSheet, View, Platform } from 'react-native';
 import { UI_COLORS } from './src/design-system/colors';
-import HomeScreen from './src/screens/HomeScreen';
-import AccessScreen from './src/screens/AccessScreen';
-import VisitorScreen from './src/screens/VisitorScreen';
-import MoreScreen from './src/screens/MoreScreen';
-import CreateInviteScreen from './src/screens/CreateInviteScreen';
-import GetStartedScreen from './src/screens/GetStartedScreen';
-import BottomNavigation from './src/components/BottomNavigation';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Font from 'expo-font';
+import { NavigationContainer, DarkTheme } from '@react-navigation/native';
+import { SafeAreaProvider, useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { 
   useFonts, 
   Outfit_400Regular,
@@ -18,19 +14,7 @@ import {
   Outfit_700Bold 
 } from '@expo-google-fonts/outfit';
 import AudioService from './src/utils/AudioService';
-
-// Tab constants
-const TABS = {
-  HOME: 'home',
-  DOOR: 'door',
-  VISITOR: 'visitor',
-  MORE: 'more'
-};
-
-// Additional screens
-const SCREENS = {
-  CREATE_INVITE: 'create_invite'
-};
+import AppNavigator from './src/navigation/AppNavigator';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -39,19 +23,19 @@ SplashScreen.preventAutoHideAsync();
 const BACKGROUND_COLOR = UI_COLORS.BACKGROUND.PAGE; // #1E2021 - Main screens background
 const TOPBAR_COLOR = UI_COLORS.BACKGROUND.CARD; // #23262D - Card/Navbar background
 
+// Create a custom theme based on DarkTheme
+const CustomDarkTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: BACKGROUND_COLOR, // Use our specific page background
+    card: BACKGROUND_COLOR, // Use page background for cards too, ensuring consistency
+    // Keep other dark theme colors (text, border, etc.)
+  },
+};
+
 const App = () => {
-  // State to track the active tab
-  const [activeTab, setActiveTab] = useState(TABS.HOME);
-  
-  // State to track active screen (for non-tab screens)
-  const [activeScreen, setActiveScreen] = useState(null);
-  
-  // State to track whether invite flow is active
-  const [inviteFlowActive, setInviteFlowActive] = useState(false);
-
-  // State to track authentication status
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-
+  const insets = useSafeAreaInsets();
   // Load custom fonts
   const [fontsLoaded] = useFonts({
     'Outfit': Outfit_400Regular,
@@ -124,147 +108,53 @@ const App = () => {
     }
   }, [appIsReady, fontsLoaded]);
 
-  // Handle getting started
-  const handleGetStarted = () => {
-    // Authenticate the user
-    setIsAuthenticated(true);
-  };
-
-  // Handle learn more
-  const handleLearnMore = () => {
-    // Handle learn more action (e.g., open a website, show modal, etc.)
-    console.log('[App] Learn more pressed');
-  };
-
-  // Handle tab press/navigation
-  const handleTabPress = (tabId) => {
-    setActiveTab(tabId);
-    // Clear any non-tab screens
-    setActiveScreen(null);
-  };
-
-  // Handle invite flow state
-  const handleInviteFlowStateChange = (isActive) => {
-    setInviteFlowActive(isActive);
-  };
-  
-  // Navigate to create invite screen
-  const navigateToCreateInvite = () => {
-    console.log('[App] Navigating to CreateInviteScreen');
-    setActiveScreen(SCREENS.CREATE_INVITE);
-    setInviteFlowActive(true);
-  };
-  
-  // Navigate back from create invite screen
-  const navigateBackFromCreateInvite = () => {
-    console.log('[App] Navigating back from CreateInviteScreen');
-    setActiveScreen(null);
-    setInviteFlowActive(false);
-  };
-  
-  // Handle create invite success
-  const handleCreateInviteSuccess = (inviteData) => {
-    console.log('[App] Create invite success:', inviteData);
-    setActiveScreen(null);
-    setInviteFlowActive(false);
-  };
-
-  // Log colors for debugging
-  useEffect(() => {
-    console.log('App.tsx - COLOR VALUES:');
-    console.log('BACKGROUND_COLOR:', BACKGROUND_COLOR);
-    console.log('TOPBAR_COLOR:', TOPBAR_COLOR);
-  }, []);
-
-  // Render the current screen based on the active tab or special screens
-  const renderScreen = () => {
-    // If not authenticated, show the get started screen
-    if (!isAuthenticated) {
-      return (
-        <GetStartedScreen 
-          onGetStarted={handleGetStarted}
-          onLearnMore={handleLearnMore}
-        />
-      );
-    }
-
-    // First check if a special screen is active
-    if (activeScreen === SCREENS.CREATE_INVITE) {
-      return (
-        <CreateInviteScreen 
-          onClose={navigateBackFromCreateInvite}
-          onCreateInvite={handleCreateInviteSuccess}
-        />
-      );
-    }
-    
-    // Otherwise render based on the active tab
-    switch (activeTab) {
-      case TABS.HOME:
-        return <HomeScreen onNavigateToCreateInvite={navigateToCreateInvite} />;
-      case TABS.DOOR:
-        return <AccessScreen onNavigateToHome={() => setActiveTab(TABS.HOME)} />;
-      case TABS.VISITOR:
-        // Use our VisitorScreen with navigation callback and invite flow state
-        return (
-          <VisitorScreen 
-            onNavigateToHome={() => setActiveTab(TABS.HOME)} 
-            onInviteFlowStateChange={handleInviteFlowStateChange}
-          />
-        );
-      case TABS.MORE:
-        // Use our new MoreScreen component
-        return <MoreScreen onNavigateToHome={() => setActiveTab(TABS.HOME)} />;
-      default:
-        return <HomeScreen onNavigateToCreateInvite={navigateToCreateInvite} />;
-    }
-  };
-
   if (!appIsReady || !fontsLoaded) {
     console.log('App not ready yet, showing splash screen', { appIsReady, fontsLoaded });
     return null;
   }
 
-  // Determine the appropriate background color based on authentication state
-  const safeAreaBackgroundColor = !isAuthenticated ? BACKGROUND_COLOR : TOPBAR_COLOR;
-
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: safeAreaBackgroundColor }]}>
-      <StatusBar
-        barStyle="light-content"
-        backgroundColor={safeAreaBackgroundColor}
-        translucent={false}
-      />
-      
-      {/* Content Area */}
-      <View style={styles.content} onLayout={onLayoutRootView}>
-        {renderScreen()}
+    <NavigationContainer theme={CustomDarkTheme}>
+      <View style={styles.root}>
+        {/* Re-add explicit background view for Status Bar area */}
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: BACKGROUND_COLOR, zIndex: -1 }} />
+        
+        {/* Main content area - use SAContext SafeAreaView with edges */}
+        <SafeAreaView style={styles.container} edges={['left', 'right']}>
+          <View style={styles.content} onLayout={onLayoutRootView}>
+            <AppNavigator />
+          </View>
+        </SafeAreaView>
+
+        {/* Re-add explicit background view for Home Indicator area */}
+        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: insets.bottom, backgroundColor: BACKGROUND_COLOR, zIndex: -1 }} />
       </View>
-      
-      {/* Bottom Navigation with proper background color */}
-      {isAuthenticated && !inviteFlowActive && (
-        <View style={styles.bottomNavContainer}>
-          <BottomNavigation 
-            activeTab={activeTab} 
-            onTabPress={handleTabPress} 
-          />
-        </View>
-      )}
-    </SafeAreaView>
+    </NavigationContainer>
   );
 };
 
+// Root provider needs to be outside NavigationContainer
+const RootApp = () => (
+  <SafeAreaProvider>
+    {/* Re-add global StatusBar */}
+    <StatusBar style="light" backgroundColor={BACKGROUND_COLOR} />
+    <App />
+  </SafeAreaProvider>
+);
+
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: 'transparent', // Set back to transparent
+  },
   container: {
     flex: 1,
+    backgroundColor: 'transparent', // Set back to transparent
   },
   content: {
     flex: 1,
-    backgroundColor: BACKGROUND_COLOR,
+    // Background comes from navigator/theme
   },
-  bottomNavContainer: {
-    backgroundColor: TOPBAR_COLOR, // Match navbar color
-  }
 });
 
-export default App; 
+export default RootApp; 

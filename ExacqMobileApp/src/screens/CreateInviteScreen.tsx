@@ -33,12 +33,16 @@ import { EventEmitter } from 'events';
 import InviteService from '../services/InviteService';
 import Calendar from '../components/Calendar';
 import TimeService from '../services/TimeService';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
 // Get screen dimensions
 const { width } = Dimensions.get('window');
 
+// Types for navigation
+type CreateInviteScreenNavigationProp = any;
+
 interface CreateInviteScreenProps {
-  onClose: () => void;
+  onClose?: () => void;
   onCreateInvite?: (inviteData: InviteData) => void;
 }
 
@@ -67,31 +71,6 @@ const getFirstDayOfMonth = (year: number, month: number) => {
   return new Date(year, month, 1).getDay();
 };
 
-const formatDate = (date: Date) => {
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  
-  const dayName = days[date.getDay()];
-  const monthName = months[date.getMonth()];
-  const dayNumber = date.getDate();
-  const year = date.getFullYear();
-  
-  return `${dayName}, ${monthName} ${dayNumber}, ${year}`;
-};
-
-const formatTime = (date: Date) => {
-  let hours = date.getHours();
-  const minutes = date.getMinutes();
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  
-  hours = hours % 12;
-  hours = hours ? hours : 12; // the hour '0' should be '12'
-  
-  const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes;
-  
-  return `${hours}:${formattedMinutes} ${ampm}`;
-};
-
 // Week days component for the calendar
 const WeekDays = () => {
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -112,7 +91,7 @@ const TimeSelection = ({
   isAllDay, 
   setIsAllDay, 
   selectedDate, 
-  selectedTime, 
+  selectedTime,
   onTimeSelect,
   type
 }: { 
@@ -123,13 +102,9 @@ const TimeSelection = ({
   onTimeSelect: (time: string) => void,
   type: 'from' | 'to'
 }) => {
-  // Time presets
   const timeOptions = TimeService.getStandardTimeOptions();
+  const displayDate = selectedDate ? TimeService.formatMediumDate(selectedDate) : 'Add Date';
   
-  // Display formatted date if available
-  const displayDate = selectedDate ? formatDate(selectedDate).split(',')[1].trim() : 'Add Date';
-  
-  // Add logging when all-day is toggled
   const handleAllDayToggle = (newValue: boolean) => {
     console.log(`[TimeSelection] All-day toggled to: ${newValue}`);
     setIsAllDay(newValue);
@@ -206,6 +181,8 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
   onClose,
   onCreateInvite 
 }) => {
+  const navigation = useNavigation<CreateInviteScreenNavigationProp>();
+  
   // Log platform information
   useEffect(() => {
     console.log('Platform OS:', Platform.OS);
@@ -216,13 +193,11 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
     console.log('Initializing TextInput styling');
   }, []);
   
-  // Form state with invite data
-  const [inviteData, setInviteData] = useState<InviteData>({
+  // Form state - keep basic fields, remove validFrom/validUntil strings
+  const [inviteData, setInviteData] = useState<Omit<InviteData, 'validFrom' | 'validUntil'>>({
     visitorName: '',
     visitorEmail: '',
     visitorPhone: '',
-    validFrom: '',
-    validUntil: '',
     hostName: '',
     reasonForVisit: '',
     notesForVisitor: '',
@@ -230,11 +205,16 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
     isAllDay: false
   });
 
+  // NEW: State for actual Date objects
+  const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(null);
+  const [selectedEndDate, setSelectedEndDate] = useState<Date | null>(null);
+
   // Track which field is focused
-  const [focusedField, setFocusedField] = useState<keyof InviteData | null>(null);
+  const [focusedField, setFocusedField] = useState<keyof InviteData | 'validFrom' | 'validUntil' | null>(null);
   
   // Bottom sheet state
   const [datePickerVisible, setDatePickerVisible] = useState(false);
+  // Keep activeDateField to know which date (start or end) the picker is modifying
   const [activeDateField, setActiveDateField] = useState<'validFrom' | 'validUntil' | null>(null);
   const [employeeListVisible, setEmployeeListVisible] = useState(false);
 
@@ -259,30 +239,30 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
     setEmployeeListVisible(false);
   };
 
-  // Update form fields
-  const updateField = (field: keyof InviteData, value: string | boolean) => {
+  // Update form fields (excluding dates)
+  const updateField = (field: keyof Omit<InviteData, 'validFrom' | 'validUntil'>, value: string | boolean) => {
     setInviteData(prev => ({
       ...prev,
       [field]: value
     }));
   };
-
-  // Update the isFormValid function to be more lenient and add logging
+  
+  // Update form validation to use TimeService
   const isFormValid = () => {
     console.log('[CreateInviteScreen] Checking form validity...');
     console.log(`[CreateInviteScreen] visitorName: "${inviteData.visitorName}"`);
     console.log(`[CreateInviteScreen] visitorEmail: "${inviteData.visitorEmail}"`);
     console.log(`[CreateInviteScreen] hostName: "${inviteData.hostName}"`);
-    console.log(`[CreateInviteScreen] validFrom: "${inviteData.validFrom}"`);
-    console.log(`[CreateInviteScreen] validUntil: "${inviteData.validUntil}"`);
-    
-    // For testing purposes, make validation more lenient
-    // Only require visitorName and dates
+    console.log(`[CreateInviteScreen] selectedStartDate: ${selectedStartDate?.toISOString() ?? 'null'}`);
+    console.log(`[CreateInviteScreen] selectedEndDate: ${selectedEndDate?.toISOString() ?? 'null'}`);
+
     const hasName = !!inviteData.visitorName && inviteData.visitorName.trim() !== '';
-    const hasValidFrom = !!inviteData.validFrom && inviteData.validFrom.trim() !== '';
-    const hasValidUntil = !!inviteData.validUntil && inviteData.validUntil.trim() !== '';
-    
-    const isValid = hasName && hasValidFrom && hasValidUntil;
+    const hasHost = !!inviteData.hostName && inviteData.hostName.trim() !== '';
+    const hasValidFrom = selectedStartDate !== null && TimeService.isValidDate(selectedStartDate);
+    const hasValidUntil = selectedEndDate !== null && TimeService.isValidDate(selectedEndDate);
+    const datesValid = hasValidFrom && hasValidUntil && selectedStartDate! < selectedEndDate!;
+
+    const isValid = hasName && hasHost && datesValid;
     
     console.log(`[CreateInviteScreen] Form validity result: ${isValid}`);
     return isValid;
@@ -291,130 +271,120 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
   // Add loading state
   const [isLoading, setIsLoading] = useState(false);
 
-  // Update the handleCreateInvite function to properly format dates and ensure no circular dependencies
+  // Handle back button press
+  const handleBackPress = () => {
+    console.log('[CreateInviteScreen] Back button pressed');
+    
+    // Use the provided onClose callback if available, otherwise use navigation
+    if (onClose) {
+      onClose();
+    } else {
+      navigation.goBack();
+    }
+  };
+
+  // Update the handleCreateInvite function
   const handleCreateInvite = async () => {
     console.log('[CreateInviteScreen] ==================== CREATE INVITE START ====================');
     console.log('[CreateInviteScreen] Creating invite with form data:', JSON.stringify(inviteData, null, 2));
-    setIsLoading(true);
-    
-    // Check if the form is valid
+    console.log(`[CreateInviteScreen] Start Date: ${selectedStartDate?.toISOString()}`);
+    console.log(`[CreateInviteScreen] End Date: ${selectedEndDate?.toISOString()}`);
+    console.log(`[CreateInviteScreen] Is All Day: ${inviteData.isAllDay}`);
+
+    // Enhanced Validation: Check specifically for host name
+    if (!inviteData.hostName || inviteData.hostName.trim() === '') {
+        Alert.alert('Missing Host', 'Please select a host name.');
+        console.error('[CreateInviteScreen] Host name validation failed');
+        return;
+    }
+
+    // Validate the rest of the form
     if (!isFormValid()) {
+      // Improved Alert message
+      let alertMessage = 'Please ensure:';
+      if (!inviteData.visitorName || inviteData.visitorName.trim() === '') {
+          alertMessage += '\n - Visitor name is entered.';
+      }
+      if (!selectedStartDate || !selectedEndDate || selectedStartDate >= selectedEndDate) {
+           alertMessage += '\n - Start/end dates are valid and start is before end.';
+      }
+
+      Alert.alert('Invalid Form', alertMessage);
       console.error('[CreateInviteScreen] Form validation failed');
-      Alert.alert('Invalid Form', 'Please fill in all required fields');
-      setIsLoading(false);
       return;
     }
-    
+
     setIsLoading(true);
-    
+
     try {
-      console.log('[CreateInviteScreen] Creating invite with InviteService');
-      
-      // Function to ensure date is in ISO format with improved error handling and all-day support
-      const ensureISOFormat = (dateStr: string | null | undefined, isStart: boolean = true): string => {
-        if (!dateStr) {
-          console.log('[CreateInviteScreen] No date string provided, using current time');
-          return new Date().toISOString();
-        }
-        
-        try {
-          console.log(`[CreateInviteScreen] Attempting to parse date: "${dateStr}", isStart: ${isStart}, isAllDay: ${inviteData.isAllDay}`);
-          
-          // Check if this is an all-day event
-          if (inviteData.isAllDay) {
-            console.log('[CreateInviteScreen] Processing as all-day event');
-            
-            // Parse date with TimeService
-            const parsedDate = TimeService.fromISOString(dateStr);
-            
-            // Set to start or end of day based on which field we're processing
-            const adjustedDate = new Date(parsedDate);
-            if (isStart) {
-              // Start date should be at beginning of day
-              adjustedDate.setHours(0, 0, 0, 0);
-              console.log('[CreateInviteScreen] Set start date to beginning of day:', adjustedDate.toString());
-            } else {
-              // End date should be at end of day
-              adjustedDate.setHours(23, 59, 59, 999);
-              console.log('[CreateInviteScreen] Set end date to end of day:', adjustedDate.toString());
-            }
-            
-            // Return ISO string
-            return adjustedDate.toISOString();
-          }
-          
-          // For non-all-day events, use regular parsing
-          const date = TimeService.fromISOString(dateStr);
-          
-          // Check if parsing was successful
-          if (!isNaN(date.getTime())) {
-            const isoString = date.toISOString();
-            console.log(`[CreateInviteScreen] Successfully parsed date to: ${isoString}`);
-            console.log(`[CreateInviteScreen] Local date representation: ${date.toString()}`);
-            return isoString;
-          }
-          
-          // If we still reach here, it means all parsing methods failed
-          console.error(`[CreateInviteScreen] All parsing methods failed for: "${dateStr}"`);
-          
-          // Generate a clean fallback date using TimeService
-          console.log('[CreateInviteScreen] Using standard invite time as fallback');
-          const { startDate, endDate } = TimeService.createStandardInviteTimes();
-          
-          // Return appropriate date based on which field we're processing
-          const fallbackDate = isStart ? startDate : endDate;
-          console.log(`[CreateInviteScreen] Fallback date: ${fallbackDate.toISOString()}`);
-          
-          return fallbackDate.toISOString();
-        } catch (error) {
-          console.error('[CreateInviteScreen] Error parsing date:', error);
-          console.log('[CreateInviteScreen] Stack trace:', error.stack);
-          
-          // Even with error, provide a usable date
-          const { startDate, endDate } = TimeService.createStandardInviteTimes();
-          return isStart ? startDate.toISOString() : endDate.toISOString();
-        }
-      };
-      
-      // Format dates
-      const validFrom = ensureISOFormat(inviteData.validFrom, true);
-      const validUntil = ensureISOFormat(inviteData.validUntil, false);
-      
-      console.log('[CreateInviteScreen] Final formatted dates:');
-      console.log(`[CreateInviteScreen] validFrom: ${validFrom}`);
-      console.log(`[CreateInviteScreen] validUntil: ${validUntil}`);
-      console.log(`[CreateInviteScreen] isAllDay: ${inviteData.isAllDay}`);
-      
-      // Create data object for InviteService
+      let finalStartDate: Date;
+      let finalEndDate: Date;
+
+      if (inviteData.isAllDay) {
+        console.log('[CreateInviteScreen] Adjusting dates for all-day event');
+        // Clone dates and set times for all-day
+        finalStartDate = new Date(selectedStartDate!);
+        finalStartDate.setHours(0, 0, 0, 0);
+
+        finalEndDate = new Date(selectedEndDate!);
+        finalEndDate.setHours(23, 59, 59, 999);
+      } else {
+        // Use the selected dates directly
+        finalStartDate = selectedStartDate!;
+        finalEndDate = selectedEndDate!;
+      }
+
+      // Convert final dates to ISO strings
+      const validFromISO = finalStartDate.toISOString();
+      const validUntilISO = finalEndDate.toISOString();
+
+      console.log('[CreateInviteScreen] Final ISO dates:');
+      console.log(`[CreateInviteScreen] validFrom: ${validFromISO}`);
+      console.log(`[CreateInviteScreen] validUntil: ${validUntilISO}`);
+
+      // Create object for InviteService
       const inviteServiceData = {
-        visitorName: inviteData.visitorName || 'Guest',
-        validFrom,
-        validUntil,
-        hostName: inviteData.hostName || ''
+        visitorName: inviteData.visitorName,
+        visitorEmail: inviteData.visitorEmail,
+        visitorPhone: inviteData.visitorPhone || "",
+        validFrom: validFromISO, // Use ISO string
+        validUntil: validUntilISO, // Use ISO string
+        hostName: inviteData.hostName,
+        reasonForVisit: inviteData.reasonForVisit || "",
+        notesForVisitor: inviteData.notesForVisitor || "",
+        notesForReception: inviteData.notesForReception || "",
+        // status: "pending" // Status is typically set by the service
       };
-      
-      // Check formatted times to ensure they're correct before sending
-      const startDate = new Date(validFrom);
-      const endDate = new Date(validUntil);
-      const formattedDisplay = TimeService.formatDateTimeRange(startDate, endDate);
-      console.log('[CreateInviteScreen] Formatted display for verification:', formattedDisplay);
-      
+
+      console.log('[CreateInviteScreen] Data prepared for InviteService:', inviteServiceData);
+
       // Create the invite
       const newInvite = await InviteService.createInvite(inviteServiceData);
-      
+
       console.log('[CreateInviteScreen] Invite created successfully with ID:', newInvite.id);
-      
-      // Don't show success Alert, the parent component will show a Toast instead
+
+      // Prepare data for the legacy callback if needed
+      const legacyInviteData: InviteData = {
+          ...inviteData,
+          validFrom: selectedStartDate ? selectedStartDate.toISOString() : '',
+          validUntil: selectedEndDate ? selectedEndDate.toISOString() : '',
+          isAllDay: inviteData.isAllDay,
+      };
+
       if (onCreateInvite) {
-        // Call the parent's invite handler which shows a toast
-        onCreateInvite(inviteData);
+        console.log('[CreateInviteScreen] Calling onCreateInvite callback with:', legacyInviteData);
+        onCreateInvite(legacyInviteData);
       }
-      
-      // Close the screen
-      onClose();
+
+      // Navigate back to VisitorsScreen with success param
+      navigation.navigate('MainTabs', { 
+        screen: 'Visitor', // Correct screen name within MainTabs
+        params: { inviteCreated: true } // Pass params here
+      });
+
     } catch (error) {
       console.error('[CreateInviteScreen] Error creating invite:', error);
-      Alert.alert('Error', `Failed to create invite: ${error.message || 'Unknown error'}`);
+      Alert.alert('Error', 'Failed to create invitation. Please try again.');
     } finally {
       setIsLoading(false);
       console.log('[CreateInviteScreen] ==================== CREATE INVITE END ====================');
@@ -422,7 +392,7 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
   };
 
   // Log focus changes
-  const handleFocus = (field: keyof InviteData) => {
+  const handleFocus = (field: keyof InviteData | 'validFrom' | 'validUntil') => {
     console.log('Field focused:', field);
     setFocusedField(field);
     
@@ -465,14 +435,42 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
   };
 
   // Render functional input field
-  const renderInputField = (label: string, field: keyof InviteData, optional: boolean = false) => {
-    const value = inviteData[field];
-    const isFocused = focusedField === field;
-    const hasValue = Boolean(value);
-    const inputProps = getInputProps();
+  const renderInputField = (
+    label: string,
+    field: keyof Omit<InviteData, 'validFrom' | 'validUntil'> | 'validFrom' | 'validUntil',
+    optional: boolean = false
+  ) => {
     const isDateField = field === 'validFrom' || field === 'validUntil';
     const isHostField = field === 'hostName';
-    
+    const isMandatory = !optional; // Determine if the field is mandatory
+    const labelText = `${label}${optional ? ' (optional)' : ''}`; // Removed asterisk
+
+    // Get value based on field type
+    let displayValue: string = '';
+    let hasValue: boolean = false;
+
+    if (isDateField) {
+        const dateObj = field === 'validFrom' ? selectedStartDate : selectedEndDate;
+        if (dateObj) {
+            // Use TimeService for formatting display value
+            displayValue = TimeService.formatLongDate(dateObj);
+            if (!inviteData.isAllDay) {
+                 displayValue += `, ${TimeService.formatTime(dateObj)}`;
+            }
+            hasValue = true;
+        } else {
+            displayValue = '';
+            hasValue = false;
+        }
+    } else {
+        // Type assertion needed here
+        displayValue = inviteData[field as keyof typeof inviteData] as string ?? '';
+        hasValue = Boolean(displayValue);
+    }
+
+    const isFocused = focusedField === field;
+    const inputProps = getInputProps();
+
     const handlePress = () => {
       if (isDateField) {
         setActiveDateField(field as 'validFrom' | 'validUntil');
@@ -481,81 +479,116 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
         setEmployeeListVisible(true);
       }
     };
-    
-    return (
-      <View style={{position: 'relative'}}>
-        <TouchableOpacity 
-          style={[
-            styles.inputContainer, 
-            isFocused && styles.inputContainerFocused
-          ]}
-          onPress={isDateField ? handlePress : undefined}
-          activeOpacity={isDateField ? 0.7 : 1}
-        >
-          {isDateField ? (
-            // Date field rendering to exactly match design
-            hasValue ? (
-              <>
-                <Text style={styles.inputLabel}>
-                  {label}{optional ? ' (optional)' : ''}
+
+    // Make the entire Host Name row pressable
+    if (isHostField) {
+      return (
+        <View style={{ position: 'relative' }}>
+          {/* Wrap the entire field in TouchableOpacity */}
+          <TouchableOpacity
+            style={[
+              styles.inputContainer,
+              isFocused && styles.inputContainerFocused
+            ]}
+            onPress={handlePress} // Use the generic handlePress
+            activeOpacity={0.7}
+          >
+            {/* Render Label Consistently for Host Field */} 
+            {hasValue && (
+              <Text style={styles.inputLabel}>
+                {labelText} {/* Host Name label - positioned like others */}
+              </Text>
+            )}
+            
+            <View style={styles.dateDisplayContainer}>
+              {/* Label is removed from here when value exists */} 
+              {hasValue ? (
+                // Render only the value text here
+                <Text style={[styles.dateText, styles.inputWithValue]}>
+                  {displayValue}
                 </Text>
-                <View style={styles.dateDisplayContainer}>
-                  <Text style={[styles.dateText, styles.inputWithValue]}>
-                    {value as string}
-                  </Text>
-                </View>
-              </>
-            ) : (
-              <View style={styles.dateDisplayContainer}>
-                <Text style={[styles.dateText, {color: '#B6BDCD'}]}>
-                  {label}{optional ? ' (optional)' : ''}
-                </Text>
-              </View>
-            )
-          ) : (
-            <>
-              {hasValue && (
-                <Text style={styles.inputLabel}>
-                  {label}{optional ? ' (optional)' : ''}
+              ) : (
+                // Placeholder remains inside
+                <Text style={[styles.dateText, { color: '#B6BDCD' }]}>
+                  {labelText} {/* Placeholder text when no value */}
                 </Text>
               )}
-              <TextInput
-                style={[
-                  styles.input,
-                  hasValue && styles.inputWithValue
-                ]}
-                value={value as string}
-                onChangeText={(text) => updateField(field, text)}
-                placeholder={!hasValue ? `${label}${optional ? ' (optional)' : ''}` : ''}
-                placeholderTextColor="#B6BDCD"
-                {...inputProps}
-                onFocus={() => handleFocus(field)}
-                onBlur={handleBlur}
-                editable={!isHostField}
-              />
-            </>
+            </View>
+            {/* Chevron remains for visual cue */}
+            <ChevronIcon direction="right" width={20} height={20} fill="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // Keep other fields mostly the same
+    return (
+      <View style={{position: 'relative'}}>
+        <TouchableOpacity
+          style={[
+            styles.inputContainer,
+            isFocused && styles.inputContainerFocused
+          ]}
+          onPress={isDateField ? handlePress : undefined} // Only date fields are pressable here
+          activeOpacity={isDateField ? 0.7 : 1}
+        >
+          {/* Render Label Consistently Outside Specific Containers */} 
+          {hasValue && !isDateField && (
+            <Text style={styles.inputLabel}>
+              {labelText} {/* Standard text input label */}
+            </Text>
+          )}
+          {hasValue && isDateField && (
+            <Text style={styles.inputLabel}>
+              {labelText} {/* Date field label - positioned like others */}
+            </Text>
           )}
           
-          {(isDateField || isHostField) && (
+          {isDateField ? (
+            // Date field rendering using Date object
+            <View style={styles.dateDisplayContainer}>
+              {/* Label is removed from here */} 
+              {hasValue ? (
+                 // Render only the value text here
+                 <Text style={[styles.dateText, styles.inputWithValue]}>
+                   {displayValue}
+                 </Text>
+              ) : (
+                 // Placeholder remains inside
+                 <Text style={[styles.dateText, {color: '#B6BDCD'}]}>
+                   {labelText} {/* Placeholder text when no value */}
+                 </Text>
+              )}
+            </View>
+          ) : (
+            // Regular input field rendering (label is rendered above)
+            <TextInput
+              style={[
+                styles.input,
+                hasValue && styles.inputWithValue
+              ]}
+              value={displayValue as string}
+              onChangeText={(text) => {
+                  // Prevent direct editing of Host Name field
+                  if (!isDateField && !isHostField) {
+                       // Type assertion needed here
+                       updateField(field as keyof typeof inviteData, text)
+                  }
+              }}
+              placeholder={!hasValue ? labelText : ''} // Use labelText for placeholder
+              placeholderTextColor="#B6BDCD"
+              {...inputProps}
+              onFocus={() => handleFocus(field)}
+              onBlur={handleBlur}
+              editable={!isHostField} // Host field is not directly editable
+            />
+          )}
+
+          {/* Chevron only for Date Fields */} 
+          {isDateField && (
             <ChevronIcon direction="right" width={20} height={20} fill="#FFFFFF" />
           )}
         </TouchableOpacity>
-        
-        {/* Transparent overlay to capture touches for host field */}
-        {isHostField && (
-          <TouchableOpacity
-            style={{
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              top: 0,
-              bottom: 0,
-              backgroundColor: 'transparent'
-            }}
-            onPress={handlePress}
-            activeOpacity={1}
-          />
-        )}
       </View>
     );
   };
@@ -567,7 +600,7 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
         {/* Top Bar */}
         <View style={styles.topBar}>
           <View style={styles.topBarContent}>
-            <TouchableOpacity style={styles.backButton} onPress={onClose}>
+            <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
               <ChevronIcon direction="left" width={24} height={24} fill="#FFFFFF" />
             </TouchableOpacity>
             <Text style={styles.title}>Create Invite</Text>
@@ -645,13 +678,19 @@ const CreateInviteScreen: React.FC<CreateInviteScreenProps> = ({
           </View>
         </KeyboardAvoidingView>
 
-        {/* Use the imported InviteDuration component */}
+        {/* InviteDuration component needs to update Date objects */}
         <InviteDuration 
           visible={datePickerVisible} 
           onClose={() => setDatePickerVisible(false)}
-          onSave={handleDatePickerSave}
-          inviteData={inviteData}
-          setInviteData={setInviteData}
+          onSave={handleDatePickerSave} // Consider if save logic needs Date update
+          // Pass Date objects and setters instead of inviteData strings
+          selectedStartDate={selectedStartDate}
+          selectedEndDate={selectedEndDate}
+          setSelectedStartDate={setSelectedStartDate}
+          setSelectedEndDate={setSelectedEndDate}
+          isAllDay={inviteData.isAllDay}
+          // Pass a function that calls updateField correctly
+          setIsAllDay={(value: boolean) => updateField('isAllDay', value)}
           activeDateField={activeDateField}
         />
 
