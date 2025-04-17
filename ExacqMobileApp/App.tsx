@@ -15,6 +15,7 @@ import {
 } from '@expo-google-fonts/outfit';
 import AudioService from './src/utils/AudioService';
 import AppNavigator from './src/navigation/AppNavigator';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -136,9 +137,12 @@ const App = () => {
 // Root provider needs to be outside NavigationContainer
 const RootApp = () => (
   <SafeAreaProvider>
-    {/* Re-add global StatusBar */}
-    <StatusBar style="light" backgroundColor={BACKGROUND_COLOR} />
-    <App />
+    {/* Wrap the entire app content with GestureHandlerRootView */}
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      {/* Re-add global StatusBar */}
+      <StatusBar style="light" backgroundColor={BACKGROUND_COLOR} />
+      <App />
+    </GestureHandlerRootView>
   </SafeAreaProvider>
 );
 

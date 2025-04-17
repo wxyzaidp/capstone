@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Dimensions, Image, TouchableOpacity, Platform, Modal, Animated, TouchableWithoutFeedback, StatusBar, PanResponder } from 'react-native';
+import { DeviceMotion, DeviceMotionMeasurement } from 'expo-sensors';
 import { UI_COLORS } from '../design-system/colors';
 import LoginBottomSheet from '../components/LoginBottomSheet';
 import AccessCardTopBar from '../components/AccessCardTopBar';
 import { useNavigation, useRoute, RouteProp, ParamListBase, NavigationProp } from '@react-navigation/native';
 import SimpleCard from '../components/SimpleCard';
 import { SvgXml } from 'react-native-svg';
+import Toast from '../components/Toast';
 
 // Define the type for route params
 type AccessCardParams = {
@@ -42,6 +44,18 @@ const selectedCheckboxSvg = `
 </svg>
 `;
 
+// Define the server URL (use localhost for simulator/emulator, IP for physical device)
+const SERVER_URL = 'https://exacq-server-263977944028.us-central1.run.app'; // Changed from localhost
+
+// Define thresholds and tolerances for gesture detection
+const SENSOR_UPDATE_INTERVAL = 160; // ms
+// Thresholds for Portrait -> Landscape -> Portrait detection
+const LANDSCAPE_GAMMA_THRESHOLD = 65; // Degrees away from 0 to be considered landscape
+const PORTRAIT_GAMMA_TOLERANCE = 25; // Degrees close to 0 to be considered portrait
+const STABLE_BETA_THRESHOLD = 60;  // Beta should be reasonably upright
+
+type OrientationGestureState = 'idle' | 'seeking_landscape' | 'seeking_portrait' | 'triggered';
+
 const AccessCardScreen = () => {
   const [isLoginVisible, setIsLoginVisible] = useState(false);
   const [showGestureSheet, setShowGestureSheet] = useState(false);
@@ -62,15 +76,34 @@ const AccessCardScreen = () => {
     cardIndex: 0
   };
   
+  // --- Sensor and Gesture State ---
+  const [deviceMotionData, setDeviceMotionData] = useState<DeviceMotionMeasurement | null>(null);
+  const latestGammaRef = useRef<number>(0);
+  const latestBetaRef = useRef<number>(0);
+  const [startGamma, setStartGamma] = useState<number | null>(null);
+  const [gestureState, setGestureState] = useState<OrientationGestureState>('idle');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const _subscription = useRef<ReturnType<typeof DeviceMotion.addListener> | null>(null);
+  // ---------------------------------
+
   // PanResponder Logic (adjust spring animation values)
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponder: (evt, gestureState) => {
+        // Log when this might become the responder
+        console.log('[PanResponder] onStartShouldSetPanResponder called');
+        return true; // Keep original logic
+      },
       onMoveShouldSetPanResponder: (evt, gestureState) => {
         // Only capture vertical swipes
-        return Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && gestureState.dy > 0;
+        const isVerticalSwipe = Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && gestureState.dy > 0;
+        if (isVerticalSwipe) {
+          console.log('[PanResponder] onMoveShouldSetPanResponder returning TRUE (vertical swipe)');
+        }
+        return isVerticalSwipe;
       },
       onPanResponderGrant: () => {
+        console.log('[PanResponder] Granted (bottom sheet drag started)');
         // Use extractOffset to properly handle subsequent drags
         panY.extractOffset();
       },
@@ -202,6 +235,141 @@ const AccessCardScreen = () => {
       });
   };
 
+  // Function to communicate door status to the server
+  const setDoorStatus = useCallback(async (shouldBeOpen: boolean) => {
+    console.log(`[Network] Attempting to set door status to: ${shouldBeOpen}`);
+    if (shouldBeOpen) {
+        setToastMessage("Door opened successfully!");
+    }
+    try {
+      const response = await fetch(`${SERVER_URL}/set-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isOpen: shouldBeOpen }),
+      });
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+      const result = await response.json();
+      console.log('[Network] Server response:', result);
+    } catch (error) {
+      console.error('[Network] Failed to set door status:', error);
+      setToastMessage("Error communicating with door");
+    }
+  }, []);
+
+  // Reset door status on mount and unmount
+  useEffect(() => {
+    console.log('[Lifecycle] AccessCardScreen mounted, ensuring door is closed.');
+    setDoorStatus(false);
+    return () => {
+      console.log('[Lifecycle] AccessCardScreen unmounted, ensuring door is closed.');
+      setDoorStatus(false);
+    };
+  }, [setDoorStatus]);
+
+  // Subscribe to DeviceMotion and update Refs
+  useEffect(() => {
+    let isMounted = true;
+    const subscribe = async () => {
+      const isAvailable = await DeviceMotion.isAvailableAsync();
+      if (!isAvailable) {
+        console.warn('[Sensor] Device Motion sensor is not available on this device.');
+        return;
+      }
+      // Permissions are usually not needed for DeviceMotion, but check if required
+      // await DeviceMotion.requestPermissionsAsync(); 
+      console.log('[Sensor] Subscribing to Device Motion updates...');
+      DeviceMotion.setUpdateInterval(SENSOR_UPDATE_INTERVAL); // Keep update interval
+      _subscription.current = DeviceMotion.addListener(data => {
+          if (isMounted && data && data.rotation) {
+              // Update refs directly - NO STATE UPDATE HERE
+              const { beta, gamma } = data.rotation;
+              if (gamma !== null && gamma !== undefined) {
+                  latestGammaRef.current = gamma * (180 / Math.PI); // Convert and store degrees
+              }
+              if (beta !== null && beta !== undefined) {
+                  latestBetaRef.current = beta * (180 / Math.PI); // Convert and store degrees
+              }
+          }
+      });
+    };
+    subscribe();
+    return () => { // Unsubscribe logic remains the same
+        isMounted = false;
+        console.log('[Sensor] Unsubscribing from Device Motion updates.');
+        _subscription.current && _subscription.current.remove();
+        _subscription.current = null;
+    };
+  }, []); // Empty dependency array - runs once on mount
+
+  // Process Sensor Data periodically using an Interval
+  useEffect(() => {
+    console.log('[Processor] Setting up gesture processing interval.');
+    const intervalId = setInterval(() => {
+        // Read latest values from refs
+        const currentGamma = latestGammaRef.current;
+        const currentBeta = latestBetaRef.current;
+        
+        // Read current state values (safe inside interval)
+        const currentGestureState = gestureState;
+        const currentStartGamma = startGamma;
+
+        // --- State Machine Logic (using current values and ref values) ---
+        // Log current values for debugging the interval
+        console.log(`[Processor] Interval Check: beta: ${currentBeta.toFixed(1)}, gamma: ${currentGamma.toFixed(1)}, state: ${currentGestureState}`);
+
+        switch (currentGestureState) {
+            case 'idle':
+                if (Math.abs(currentGamma) < PORTRAIT_GAMMA_TOLERANCE && Math.abs(currentBeta) > STABLE_BETA_THRESHOLD) {
+                    console.log(`[Processor] Setting startGamma: ${currentGamma.toFixed(1)} (Initial Portrait - beta: ${currentBeta.toFixed(1)})`);
+                    setStartGamma(currentGamma);
+                    setGestureState('seeking_landscape');
+                }
+                break;
+
+            case 'seeking_landscape':
+                if (Math.abs(currentGamma) > LANDSCAPE_GAMMA_THRESHOLD) {
+                    console.log(`[Processor] State change: seeking_landscape -> seeking_portrait (Reached Landscape - gamma: ${currentGamma.toFixed(1)})`);
+                    setGestureState('seeking_portrait');
+                }
+                else if (Math.abs(currentGamma) < PORTRAIT_GAMMA_TOLERANCE) {
+                    console.log(`[Processor] Resetting: Returned to portrait prematurely (gamma: ${currentGamma.toFixed(1)})`);
+                    setGestureState('idle');
+                    setStartGamma(null);
+                }
+                break;
+
+            case 'seeking_portrait':
+                 if (Math.abs(currentGamma) < PORTRAIT_GAMMA_TOLERANCE && Math.abs(currentBeta) > STABLE_BETA_THRESHOLD) {
+                    console.log(`[Processor] State change: seeking_portrait -> triggered (Returned Portrait - gamma: ${currentGamma.toFixed(1)}, beta: ${currentBeta.toFixed(1)})`);
+                    console.log('[Door] !!! TRIGGERING DOOR OPEN !!!');
+                    setGestureState('triggered');
+                    setDoorStatus(true); 
+                    
+                    setTimeout(() => {
+                        console.log('[Processor] Resetting gesture state to idle after trigger.');
+                        setStartGamma(null);
+                        setGestureState('idle');
+                        setDoorStatus(false); 
+                    }, 60000); // Increased timeout to 60 seconds
+                }
+                break;
+
+            case 'triggered':
+                break;
+        }
+    }, SENSOR_UPDATE_INTERVAL); // Run processing logic at same frequency as sensor updates (or slightly less often)
+
+    // Cleanup interval on unmount or when dependencies change (if any)
+    return () => {
+        console.log('[Processor] Clearing gesture processing interval.');
+        clearInterval(intervalId);
+    };
+  // Re-run this effect if these state setters/values change - ensures interval callback closure has fresh values
+  // Note: Including state setters in dependency arrays is generally safe.
+  }, [gestureState, startGamma, setDoorStatus]); 
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={BACKGROUND_COLOR} />
@@ -209,32 +377,26 @@ const AccessCardScreen = () => {
       {/* Top Bar */}
       <AccessCardTopBar onBackPress={handleBackPress} />
       
+      {/* Content Area - No longer needs RotationGestureHandler */}
       <View style={styles.contentContainer}>
-        {/* Re-add wrapper View specifically for centering the card */}
-        <View style={styles.centeringCardContainer}>
-          <SimpleCard
-            key={cardId}
-            name={name}
-            role={role}
-            index={cardIndex}
-            onPress={() => {}}
-          />
-        </View>
-        
-        {/* Tap Animation GIF */}
-        <View style={styles.animationContainer}>
-          <Image 
-            source={require('../../assets/Tap_animation.gif')}
-            style={styles.gifAnimation}
-            resizeMode="contain"
-          />
-          <Text style={styles.readerText}>HOLD NEAR READER</Text>
-        </View>
-        
-        {/* Login Button removed */}
+          {/* Card display - No longer needs Animated.View or rotation style */} 
+          <View style={styles.centeringCardContainer}>
+            <SimpleCard
+              key={cardId}
+              name={name}
+              role={role}
+              index={cardIndex}
+              onPress={() => console.log('[SimpleCard] onPress triggered')} // Keep SimpleCard log
+            />
+          </View>
+          
+          <View style={styles.animationContainer}>
+            <Image source={require('../../assets/Tap_animation.gif')} style={styles.gifAnimation} resizeMode="contain" />
+            <Text style={styles.readerText}>HOLD NEAR READER</Text>
+          </View>
       </View>
       
-      {/* Custom Gesture Unlock Bottom Sheet */}
+      {/* Custom Gesture Unlock Bottom Sheet - Restoring */}
       <Modal
         transparent
         visible={gestureSheetVisible}
@@ -249,9 +411,7 @@ const AccessCardScreen = () => {
           }).start(() => setGestureSheetVisible(false));
         }}
       >
-        {/* Overlay - Separate Touchable for closing on background tap */}
         <TouchableWithoutFeedback onPress={() => { 
-          // Trigger close animation on overlay press
            Animated.spring(panY, {
             toValue: height,
             tension: 50, // Slightly lower tension
@@ -259,24 +419,20 @@ const AccessCardScreen = () => {
             useNativeDriver: true,
           }).start(() => setGestureSheetVisible(false));
         }}>
-           {/* Apply animated opacity ONLY to the overlay */}
           <Animated.View style={[styles.overlay, { opacity }]} />
         </TouchableWithoutFeedback>
 
-        {/* Bottom Sheet - Sibling to Overlay */}
         <Animated.View 
           style={[
             styles.bottomSheet, 
-            { transform: [{ translateY: panY }] } // Use panY for transform
+            { transform: [{ translateY: panY }] } 
           ]}
-          {...panResponder.panHandlers} // Attach pan handlers
+          {...panResponder.panHandlers} 
         >
-          {/* Handle is part of the draggable sheet */}
           <View style={styles.handleContainer} >
               <View style={styles.handle} />
           </View>
           
-          {/* Inner content wrapper - Prevents touches inside content from propagating to overlay touchable */}
           <TouchableWithoutFeedback>
             <View style={{flex: 1}}> 
               <View style={styles.bottomSheetHeader}>
@@ -284,7 +440,6 @@ const AccessCardScreen = () => {
               </View>
               
               <View style={styles.gestureSheetContent}>
-                {/* Twist phone animation */}
                 <View style={styles.twistAnimationContainer}>
                   <Image 
                     source={require('../../assets/Twist_Phone.gif')}
@@ -293,14 +448,12 @@ const AccessCardScreen = () => {
                   />
                 </View>
                 
-                {/* Information message */}
                 <View style={styles.infoContainer}>
                   <Text style={styles.infoText}>
                     Twist your phone near the reader to unlock instantly. No tapping needed.
                   </Text>
                 </View>
                 
-                {/* Don't show again checkbox */}
                 <View style={styles.checkboxContainer}>
                   <TouchableOpacity onPress={handleCheckboxToggle}>
                     <SvgXml 
@@ -312,7 +465,6 @@ const AccessCardScreen = () => {
                   <Text style={styles.checkboxLabel}>Don't show this tip again</Text>
                 </View>
                 
-                {/* I Understand button */}
                 <TouchableOpacity 
                   style={styles.understandButton}
                   onPress={handleUnderstand}
@@ -332,6 +484,13 @@ const AccessCardScreen = () => {
         onLogin={handleLogin}
         onVerify={handleVerify}
         onPasscodeSet={handlePasscodeSet}
+      />
+
+      {/* Add Toast Component */}
+      <Toast 
+        visible={!!toastMessage} 
+        message={toastMessage || ''} 
+        onDismiss={() => setToastMessage(null)}
       />
     </View>
   );

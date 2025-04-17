@@ -70,6 +70,14 @@ const MainTabNavigator = () => {
   // Keep track of the current tab to handle back button properly
   const lastTabRef = useRef<string>(TABS.HOME);
   
+  useEffect(() => {
+    // Add mount log (optional, but helps see sequence)
+    console.log('[Navigator] MainTabNavigator MOUNTED');
+    return () => {
+      console.log('[Navigator] MainTabNavigator UNMOUNTED');
+    };
+  }, []);
+
   return (
     <Tab.Navigator
       tabBar={(props: BottomTabBarProps) => {
@@ -193,6 +201,14 @@ const AppNavigator = () => {
     preloadGifs();
   }, []);
   // --- Preload GIFs on Mount --- End
+
+  useEffect(() => {
+    // Add mount log (optional, but helps see sequence)
+    console.log('[Navigator] AppNavigator MOUNTED');
+    return () => {
+      console.log('[Navigator] AppNavigator UNMOUNTED');
+    };
+  }, []);
 
   return (
     <Stack.Navigator

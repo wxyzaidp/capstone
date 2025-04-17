@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Door Status</title>
+    <style>
+        body {
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: sans-serif;
+            font-size: 5rem;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            transition: background-color 0.5s ease;
+        }
+        .closed {
+            background-color: red;
+        }
+        .open {
+            background-color: limegreen;
+        }
+    </style>
+</head>
+<body class="closed">
+    <div id="status-text">CLOSED</div>
+
+    <script>
+        const statusText = document.getElementById('status-text');
+        const body = document.body;
+        let intervalId = null; // Store interval ID
+
+        async function updateStatus() {
+            try {
+                const response = await fetch('/status');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                console.log('[Web Client] Received status:', data); // Log received data
+                
+                if (data.isOpen) {
+                    body.classList.remove('closed');
+                    body.classList.add('open');
+                    // Display countdown if remainingTime is available and positive
+                    if (data.remainingTime !== undefined && data.remainingTime > 0) {
+                        statusText.textContent = `OPEN (${data.remainingTime}s)`;
+                    } else {
+                        statusText.textContent = 'OPEN'; 
+                    }
+                } else {
+                    body.classList.remove('open');
+                    body.classList.add('closed');
+                    statusText.textContent = 'CLOSED';
+                }
+            } catch (error) {
+                console.error('Failed to fetch status:', error);
+                statusText.textContent = 'ERROR';
+                body.classList.remove('open', 'closed');
+                body.style.backgroundColor = 'gray'; // Indicate error state
+                if (intervalId) clearInterval(intervalId); // Stop polling on error
+                intervalId = null;
+            }
+        }
+
+        // Poll status slightly faster to update countdown more smoothly
+        function startPolling() {
+           if (intervalId) clearInterval(intervalId);
+           console.log('Starting status polling...');
+           updateStatus(); // Initial update
+           intervalId = setInterval(updateStatus, 1000); // Poll every second
+        }
+
+        startPolling(); // Start polling when the page loads
+        
+    </script>
+</body>
+</html> 
+</html> 
