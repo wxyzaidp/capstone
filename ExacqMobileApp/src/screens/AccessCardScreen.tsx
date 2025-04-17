@@ -48,7 +48,7 @@ const selectedCheckboxSvg = `
 const SERVER_URL = 'https://exacq-server-263977944028.us-central1.run.app'; // Changed from localhost
 
 // Define thresholds and tolerances for gesture detection
-const SENSOR_UPDATE_INTERVAL = 160; // ms
+const SENSOR_UPDATE_INTERVAL = 100; // ms (Reduced from 160ms)
 // Thresholds for Portrait -> Landscape -> Portrait detection
 const LANDSCAPE_GAMMA_THRESHOLD = 65; // Degrees away from 0 to be considered landscape
 const PORTRAIT_GAMMA_TOLERANCE = 25; // Degrees close to 0 to be considered portrait
