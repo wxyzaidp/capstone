@@ -26,3 +26,9 @@ osascript -e 'tell application "Terminal" to activate' \
 # osascript -e "tell application \"Terminal\" to do script \"${EXPO_CMD}\" in window 1"
 
 echo "Expo launched in new Terminal tab." 
+
+# --- ADDED: Open Server URL in Browser ---
+SERVER_URL="https://exacq-server-263977944028.us-central1.run.app"
+echo "Opening server base page (${SERVER_URL}) in default browser..."
+open "${SERVER_URL}" # Open the base URL
+# --- END ADDED --- 
